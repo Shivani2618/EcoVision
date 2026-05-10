@@ -1,0 +1,8 @@
+
+{
+    "python.defaultInterpreterPath": "C:/Users/HP/Desktop/ECOVISION-2.0/ecovision/env/Scripts/python.exe",
+    "python.analysis.extraPaths": [
+        "C:/Users/HP/Desktop/ECOVISION-2.0/ecovision/env/Lib/site-packages"
+    ],
+    "git.ignoreLimitWarning": true
+}

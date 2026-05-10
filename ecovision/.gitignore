@@ -1,0 +1,69 @@
+# =========================
+# Python
+# =========================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# =========================
+# Virtual Environment
+# =========================
+env/
+venv/
+
+# =========================
+# Dataset
+# =========================
+model/dataset_split/
+
+# =========================
+# Training Runs / YOLO Outputs
+# =========================
+runs/
+
+# =========================
+# Generated Uploads & Processed Files
+# =========================
+static/uploads/
+static/processed/
+
+# =========================
+# Logs
+# =========================
+*.log
+server.out
+server.err
+
+# =========================
+# OS / System Files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# VS Code
+# =========================
+.vscode/
+
+# =========================
+# ZIP files
+# =========================
+*.zip
+
+# =========================
+# TensorBoard / Training Events
+# =========================
+events.out.tfevents.*
+
+# =========================
+# Temporary / Cache
+# =========================
+*.tmp
+*.cache
+
+# =========================
+# Optional Large Model Files
+# =========================
+# Uncomment if you DON'T want to upload model weights
+# *.pt

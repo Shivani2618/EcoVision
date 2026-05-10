@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% block title %}Alert Center{% endblock %}
+
+{% block content %}
+<div class="page">
+  <div class="ph">
+    <div class="ph-left">
+      <h1>🚨 Alert Center</h1>
+      <p>Critical bin notifications, sensor alerts, and AI-driven warnings</p>
+    </div>
+    <div class="ph-right">
+      <button class="sound-btn" id="sound-btn" onclick="toggleSound()" title="Toggle alert sound">🔔</button>
+      <div class="live-chip"><div class="dot"></div> LIVE</div>
+    </div>
+  </div>
+
+  <!-- Summary strip -->
+  <div class="stats-row" style="margin-bottom:24px">
+    <div class="card stat-card">
+      <div class="stat-header"><div class="stat-icon-box" style="background:var(--crit-dim)">🚨</div></div>
+      <div class="stat-val red" id="al-crit-count">0</div>
+      <div class="stat-lbl">Critical</div>
+    </div>
+    <div class="card stat-card">
+      <div class="stat-header"><div class="stat-icon-box" style="background:var(--warn-dim)">⚠️</div></div>
+      <div class="stat-val amber" id="al-warn-count">0</div>
+      <div class="stat-lbl">Warnings</div>
+    </div>
+    <div class="card stat-card">
+      <div class="stat-header"><div class="stat-icon-box" style="background:var(--ok-dim)">✅</div></div>
+      <div class="stat-val" id="al-ok-count">0</div>
+      <div class="stat-lbl">Normal Bins</div>
+    </div>
+    <div class="card stat-card">
+      <div class="stat-header"><div class="stat-icon-box" style="background:var(--cyan-dim)">📡</div></div>
+      <div class="stat-val cyan" id="al-sensor-count">0</div>
+      <div class="stat-lbl">Sensor Alerts</div>
+    </div>
+  </div>
+
+  <!-- Active alerts -->
+  <div class="sec-hdr">
+    <div class="sec-title">🔴 Active Alerts</div>
+    <span class="text-xs text-muted text-mono" id="alert-refresh-time">--</span>
+  </div>
+  <div id="active-alerts-list" style="margin-bottom:24px">
+    <div class="empty"><span>✅</span><p>No alerts. All bins operating normally.</p></div>
+  </div>
+
+  <!-- AI Recommendations -->
+  <div class="sec-hdr">
+    <div class="sec-title">🤖 AI Collection Recommendations</div>
+  </div>
+  <div class="rec-list" id="alert-rec-list" style="margin-bottom:24px"></div>
+
+  <!-- Sensor alerts -->
+  <div class="sec-hdr">
+    <div class="sec-title">📡 Sensor Anomalies</div>
+  </div>
+  <div id="sensor-alerts-list" style="margin-bottom:24px">
+    <div class="empty"><span>📡</span><p>Loading sensor data…</p></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+let soundEnabled = true;
+let lastCritCount = 0;
+const audioCtx = window.AudioContext ? new AudioContext() : null;
+
+function toggleSound() {
+  soundEnabled = !soundEnabled;
+  const btn = document.getElementById('sound-btn');
+  btn.textContent = soundEnabled ? '🔔' : '🔕';
+  btn.classList.toggle('muted', !soundEnabled);
+  toast(soundEnabled ? 'Alert Sound On' : 'Alert Sound Off', '', soundEnabled ? '🔔' : '🔕');
+}
+
+function playAlertSound() {
+  if (!soundEnabled || !audioCtx) return;
+  try {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.type = 'sine'; osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
+    osc.start(audioCtx.currentTime); osc.stop(audioCtx.currentTime + 0.5);
+  } catch(e) {}
+}
+
+async function loadAlerts() {
+  const [alerts, recs, sensorsAll, binsAll] = await Promise.all([
+    fetch('/api/alerts').then(r=>r.json()),
+    fetch('/api/recommendations').then(r=>r.json()),
+    fetch('/api/sensors/all').then(r=>r.json()),
+    fetch('/api/bins').then(r=>r.json()),
+  ]);
+
+  document.getElementById('alert-refresh-time').textContent = 'Updated: ' + new Date().toLocaleTimeString();
+
+  const critCount = alerts.filter(a=>a.status==='critical').length;
+  const warnCount = alerts.filter(a=>a.status==='warning').length;
+  const okCount   = binsAll.filter(b=>b.status==='ok').length;
+
+  document.getElementById('al-crit-count').textContent = critCount;
+  document.getElementById('al-warn-count').textContent = warnCount;
+  document.getElementById('al-ok-count').textContent   = okCount;
+
+  // Play sound if new critical
+  if (critCount > lastCritCount) playAlertSound();
+  lastCritCount = critCount;
+
+  // Render bin alerts
+  const alertList = document.getElementById('active-alerts-list');
+  if (!alerts.length) {
+    alertList.innerHTML = '<div class="empty"><span>✅</span><p>No active alerts. All bins operating normally.</p></div>';
+  } else {
+    alertList.innerHTML = alerts.map(a => `
+      <div class="al-item al-${a.status}" style="margin-bottom:10px;border-radius:10px;padding:16px">
+        <span style="font-size:22px">${a.icon}</span>
+        <div style="flex:1">
+          <div style="font-size:14px;font-weight:700">${a.message}</div>
+          ${a.extra_alerts?.map(e=>`<div style='font-size:11px;margin-top:4px;opacity:.8'>${e}</div>`).join('')||''}
+        </div>
+        <span class="badge ${a.status==='critical'?'recyclable-no':'conf-md'}" style="flex-shrink:0">${a.level}%</span>
+      </div>`).join('');
+  }
+
+  // Render recommendations
+  const recList = document.getElementById('alert-rec-list');
+  recList.innerHTML = recs.slice(0,6).map((r,i) => `
+    <div class="rec-item ${r.status}" style="margin-bottom:8px">
+      <div class="rec-rank">${i+1}</div>
+      <div class="rec-body">
+        <div class="rec-name">${r.name} <span style="font-size:10px;color:var(--text-3)">${r.zone}</span></div>
+        <div class="rec-reason">${r.reason}</div>
+        <div class="rec-action">→ ${r.action}</div>
+      </div>
+      <div class="rec-meta">
+        <span class="rec-pct">${r.max_level}%</span>
+        ${r.status==='critical'?'<span class="urgent-tag">URGENT</span>':''}
+      </div>
+    </div>`).join('');
+
+  // Sensor anomalies
+  const sensorAlerts = [];
+  sensorsAll.forEach(s => {
+    if (s.gas_status !== 'ok')  sensorAlerts.push({ loc:s.location_id, type:'Gas',  val:`${s.gas_level}%`,   status:s.gas_status  });
+    if (s.temp_status !== 'ok') sensorAlerts.push({ loc:s.location_id, type:'Temp', val:`${s.temperature}°C`, status:s.temp_status });
+  });
+  document.getElementById('al-sensor-count').textContent = sensorAlerts.length;
+
+  const sensEl = document.getElementById('sensor-alerts-list');
+  if (!sensorAlerts.length) {
+    sensEl.innerHTML = '<div class="empty"><span>📡</span><p>All sensors operating within normal range.</p></div>';
+  } else {
+    const LOCS = {'B001':'City Center','B002':'Metro Station','B003':'Central Market','B004':'Riverside Park','B005':'Tech Hub','B006':'Hospital Road'};
+    sensEl.innerHTML = sensorAlerts.map(s=>`
+      <div class="al-item al-${s.status}" style="margin-bottom:8px;border-radius:10px">
+        <span style="font-size:18px">${s.type==='Gas'?'💨':'🌡️'}</span>
+        <div>
+          <strong>${s.type} Alert</strong> at <strong>${LOCS[s.loc]||s.loc}</strong> — ${s.val}
+        </div>
+      </div>`).join('');
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  loadAlerts();
+  setInterval(loadAlerts, 4000);
+});
+</script>
+{% endblock %}

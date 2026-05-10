@@ -1,0 +1,269 @@
+{% extends "base.html" %}
+{% block title %}Smart City Map{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+{% endblock %}
+
+{% block content %}
+<h2>Smart City Waste Monitoring</h2>
+<div id="screen-flash-overlay"></div>
+
+<div style="display:flex; gap:15px; margin-bottom:15px; flex-wrap:wrap;">
+    <div class="card" id="alert-panel">Critical Bins: <span id="criticalCount" style="font-weight:bold; font-size:1.2em;">0</span></div>
+    <div class="card">Truck Status: <span id="truckStatus" style="font-weight:bold; color:#38bdf8;">Idle</span></div>
+    <div class="card">Next ETA: <span id="eta">--</span></div>
+    <div class="card">Route Stops: <span id="stops">0</span></div>
+    <div class="card">Route Distance: <span id="distance">--</span></div>
+    <div class="card">Last Refresh: <span id="lastRefresh">--</span></div>
+</div>
+
+<div id="map" style="height:520px; border-radius:12px;"></div>
+
+<div id="details" style="margin-top:15px; padding:18px; background:#020617; border-radius:12px; border:1px solid #1e293b; color:#fff; min-height:180px;">
+    <p>Select a marker or wait for the live route plan to populate details.</p>
+</div>
+
+<div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:20px; margin-top:20px;">
+    <canvas id="fillChart"></canvas>
+    <canvas id="alertChart"></canvas>
+    <div id="live-feed" style="background:#020617; padding:15px; border-radius:10px; border:1px solid #1e293b; color:#fff; overflow-y:auto; height:100%; max-height:250px;">
+        <h3 style="margin-top:0; color:#38bdf8; border-bottom:1px solid #1e293b; padding-bottom:8px;">Live Activity Feed</h3>
+        <ul id="feedList" style="list-style-type:none; padding-left:0; font-size:14px;">
+            <li style="color:#22c55e;">[System] Monitoring initialized.</li>
+        </ul>
+    </div>
+</div>
+
+<style>
+.card { background:#020617; padding:15px; border-radius:10px; border:1px solid #1e293b; transition: all 0.3s ease; }
+.critical-alert { background: rgba(239, 68, 68, 0.15) !important; border: 1px solid #ef4444 !important; box-shadow: 0 0 15px rgba(239, 68, 68, 0.4); animation: blink 1.5s infinite; }
+@keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.8; box-shadow: 0 0 25px rgba(239, 68, 68, 0.8); } 100% { opacity: 1; } }
+.glowing-route { filter: drop-shadow(0 0 8px #38bdf8); }
+.truck-icon { font-size: 28px; filter: drop-shadow(0 0 10px #38bdf8); }
+.critical-glow-marker { animation: pulseMarker 1.5s infinite; transform-origin: center; }
+@keyframes pulseMarker { 0% { stroke-width: 2px; stroke-opacity: 1; fill-opacity: 0.65; } 50% { stroke-width: 8px; stroke-opacity: 0.4; fill-opacity: 0.9; } 100% { stroke-width: 2px; stroke-opacity: 1; fill-opacity: 0.65; } }
+#screen-flash-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; box-shadow: inset 0 0 50px rgba(239,68,68,0); pointer-events: none; z-index: 99999; transition: box-shadow 0.5s ease; }
+.flash-red-border { box-shadow: inset 0 0 80px rgba(239,68,68,0.8) !important; }
+.flash-text { animation: flashText 1s ease; }
+@keyframes flashText { 0% { color: #fff; transform: scale(1); } 50% { color: #38bdf8; transform: scale(1.2); } 100% { color: inherit; transform: scale(1); } }
+</style>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+const map = L.map('map').setView([23.2599, 77.4126], 13);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap contributors' }).addTo(map);
+
+let markers = [];
+let routeLine = null;
+let truckMarker = null;
+let truckAnimationId = null;
+let currentRouteKey = '';
+let lastCriticalCount = 0;
+let isFetchingMap = false;
+let isFetchingRoute = false;
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+window.addEventListener('click', () => {
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+}, { once: true });
+
+function playBeep() {
+    try {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        oscillator.type = 'square';
+        oscillator.frequency.setValueAtTime(920, audioCtx.currentTime);
+        gainNode.gain.setValueAtTime(0.12, audioCtx.currentTime);
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        oscillator.start();
+        gainNode.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.35);
+        oscillator.stop(audioCtx.currentTime + 0.35);
+    } catch (_) {}
+}
+
+function flashScreenRed() {
+    const overlay = document.getElementById('screen-flash-overlay');
+    if (!overlay) return;
+    overlay.classList.add('flash-red-border');
+    setTimeout(() => overlay.classList.remove('flash-red-border'), 800);
+}
+
+function addFeedLog(message, type = 'normal') {
+    const list = document.getElementById('feedList');
+    const li = document.createElement('li');
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    let color = '#fff';
+    if (type === 'critical') color = '#ef4444';
+    if (type === 'success') color = '#22c55e';
+    li.style.marginBottom = '5px';
+    li.innerHTML = `<span style="color:#64748b;">[${time}]</span> <span style="color:${color}">${message}</span>`;
+    list.prepend(li);
+    if (list.children.length > 50) list.lastChild.remove();
+}
+
+const fillChart = new Chart(document.getElementById('fillChart'), {
+    type: 'line',
+    data: { labels: [], datasets: [{ label: 'Average Fill Level', data: [], borderColor: '#38bdf8', backgroundColor: 'rgba(56, 189, 248, 0.2)', tension: 0.25 }] },
+    options: { responsive: true, scales: { y: { beginAtZero: true, max: 100 } } },
+});
+
+const alertChart = new Chart(document.getElementById('alertChart'), {
+    type: 'bar',
+    data: { labels: ['Normal', 'Warning', 'Critical'], datasets: [{ label: 'Bin Status Counts', data: [0, 0, 0], backgroundColor: ['#22c55e', '#f59e0b', '#ef4444'] }] },
+    options: { responsive: true },
+});
+
+function getColor(status) {
+    if (status === 'critical') return '#ef4444';
+    if (status === 'warning') return '#f59e0b';
+    return '#22c55e';
+}
+
+function formatDetails(loc) {
+    return `
+        <h3>${loc.name}</h3>
+        <p><strong>Status:</strong> ${loc.status}</p>
+        <p><strong>Fill:</strong> ${loc.max_level}%</p>
+        <p><strong>Gas:</strong> ${loc.sensors.gas_level}%</p>
+        <p><strong>Moisture:</strong> ${loc.sensors.moisture}%</p>
+        <p><strong>Temperature:</strong> ${loc.sensors.temperature}°C</p>
+        <p><strong>Address:</strong> ${loc.address}</p>
+        <p><strong>Updated:</strong> ${loc.sensors.timestamp}</p>
+    `;
+}
+
+function animateTruck(points) {
+    if (!Array.isArray(points) || !points.length) return;
+    const dense = [];
+    for (let i = 0; i < points.length - 1; i += 1) {
+        const [lat1, lng1] = points[i];
+        const [lat2, lng2] = points[i + 1];
+        for (let step = 0; step < 40; step += 1) {
+            const t = step / 40;
+            dense.push([lat1 + (lat2 - lat1) * t, lng1 + (lng2 - lng1) * t]);
+        }
+    }
+    dense.push(points[points.length - 1]);
+    if (truckAnimationId) cancelAnimationFrame(truckAnimationId);
+    if (!truckMarker) {
+        truckMarker = L.marker(dense[0], {
+            icon: L.divIcon({ className: 'truck-icon', html: '🚚', iconSize: [28, 28], iconAnchor: [14, 14] }),
+            zIndexOffset: 1000
+        }).addTo(map);
+    }
+    let position = 0;
+    let lastTime = performance.now();
+    const pointsPerMs = Math.max(0.015, dense.length / 24000);
+    document.getElementById('truckStatus').innerText = 'Moving';
+    document.getElementById('truckStatus').style.color = '#f59e0b';
+    function step(now) {
+        const delta = now - lastTime;
+        lastTime = now;
+        position += delta * pointsPerMs;
+        const idx = Math.min(dense.length - 1, Math.floor(position));
+        truckMarker.setLatLng(dense[idx]);
+        if (position >= dense.length - 1) position = 0;
+        truckAnimationId = requestAnimationFrame(step);
+    }
+    truckAnimationId = requestAnimationFrame(step);
+}
+
+function updateRoute() {
+    if (isFetchingRoute) return;
+    isFetchingRoute = true;
+    fetch('/api/routes')
+        .then(res => res.json())
+        .then(route => {
+            const stops = Array.isArray(route.stops) ? route.stops.map(stop => Array.isArray(stop) ? stop : [stop.lat, stop.lng]) : [];
+            document.getElementById('stops').innerText = stops.length;
+            const etaEl = document.getElementById('eta');
+            const newEta = route.eta ? `${route.eta} min` : route.est_minutes ? `${route.est_minutes} min` : '--';
+            if (etaEl.innerText !== newEta) {
+                etaEl.innerText = newEta;
+                etaEl.classList.add('flash-text');
+                setTimeout(() => etaEl.classList.remove('flash-text'), 1000);
+            }
+            document.getElementById('distance').innerText = route.distance_km ? `${route.distance_km} km` : '--';
+            document.getElementById('lastRefresh').innerText = new Date().toLocaleTimeString();
+            const routeKey = JSON.stringify(stops);
+            if (stops.length && routeKey !== currentRouteKey) {
+                currentRouteKey = routeKey;
+                addFeedLog(`New route generated with ${stops.length} stops.`, 'success');
+                if (routeLine) map.removeLayer(routeLine);
+                routeLine = L.polyline(stops, { color: '#38bdf8', weight: 5, opacity: 0.9, className: 'glowing-route' }).addTo(map);
+                animateTruck(stops);
+                map.fitBounds(routeLine.getBounds(), { padding: [30, 30], maxZoom: 14 });
+            }
+        })
+        .catch(() => {
+            document.getElementById('truckStatus').innerText = 'Route API Error';
+        })
+        .finally(() => {
+            isFetchingRoute = false;
+        });
+}
+
+function updateMap() {
+    if (isFetchingMap) return;
+    isFetchingMap = true;
+    fetch('/api/map')
+        .then(res => res.json())
+        .then(locations => {
+            markers.forEach(marker => map.removeLayer(marker));
+            markers = [];
+            const counts = { normal: 0, warning: 0, critical: 0 };
+            let fillSum = 0;
+            locations.forEach(loc => {
+                counts[loc.status] += 1;
+                fillSum += loc.max_level;
+                const marker = L.circleMarker([loc.lat, loc.lng], { radius: 11, color: getColor(loc.status), weight: 2, fillColor: getColor(loc.status), fillOpacity: 0.65, className: loc.status === 'critical' ? 'critical-glow-marker' : '' }).addTo(map);
+                marker.bindPopup(`<strong>${loc.name}</strong><br>${loc.address_short}<br>Fill: ${loc.max_level}%<br>Gas: ${loc.sensors.gas_level}%<br>Temp: ${loc.sensors.temperature}°C`);
+                marker.on('click', () => { document.getElementById('details').innerHTML = formatDetails(loc); });
+                markers.push(marker);
+            });
+            const avgFill = locations.length ? Math.round(fillSum / locations.length) : 0;
+            fillChart.data.labels.push(new Date().toLocaleTimeString());
+            fillChart.data.datasets[0].data.push(avgFill);
+            if (fillChart.data.labels.length > 20) {
+                fillChart.data.labels.shift();
+                fillChart.data.datasets[0].data.shift();
+            }
+            fillChart.update();
+            alertChart.data.datasets[0].data = [counts.normal, counts.warning, counts.critical];
+            alertChart.update();
+            document.getElementById('criticalCount').innerText = counts.critical;
+            const alertPanel = document.getElementById('alert-panel');
+            if (counts.critical > 0) {
+                alertPanel.classList.add('critical-alert');
+                if (counts.critical > lastCriticalCount) {
+                    playBeep();
+                    flashScreenRed();
+                    addFeedLog(`New critical bin detected! Total: ${counts.critical}`, 'critical');
+                    if (typeof toast === 'function') toast('Critical Bin Alert', `${counts.critical} bins need pickup`, '🚨', 'crit-toast', 5000);
+                }
+            } else {
+                alertPanel.classList.remove('critical-alert');
+            }
+            lastCriticalCount = counts.critical;
+        })
+        .finally(() => {
+            isFetchingMap = false;
+        });
+}
+
+if (window.mapInterval) clearInterval(window.mapInterval);
+window.mapInterval = setInterval(() => {
+    updateMap();
+    updateRoute();
+}, 5000);
+
+updateMap();
+updateRoute();
+</script>
+{% endblock %}

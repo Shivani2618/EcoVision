@@ -1,0 +1,537 @@
+{% extends "base.html" %}
+{% block title %}Recycle Guide — EcoVision{% endblock %}
+
+{% block extra_head %}
+<style>
+/* ── Page layout ─────────────────────────────── */
+.rg-hero { text-align:center; padding:32px 0 24px; }
+.rg-hero h1 { font-size:28px; margin-bottom:6px; }
+.rg-hero p  { color:var(--text-2); font-size:13px; }
+
+/* ── Smart lookup tool ───────────────────────── */
+.lookup-card {
+  background:var(--card); border:1px solid var(--border);
+  border-radius:16px; padding:28px 32px; margin-bottom:32px;
+}
+.lookup-title { font-size:15px; font-weight:700; margin-bottom:4px; }
+.lookup-sub   { font-size:11px; color:var(--text-3); margin-bottom:18px; font-family:var(--mono); }
+
+.lookup-tabs  { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px; }
+.lt-tab {
+  padding:7px 18px; border-radius:20px; font-size:12px; font-weight:600;
+  cursor:pointer; border:1px solid var(--border);
+  background:transparent; color:var(--text-2); transition:.2s;
+}
+.lt-tab:hover  { border-color:var(--accent); color:var(--accent); }
+.lt-tab.active { background:rgba(0,255,136,.12); border-color:var(--accent); color:var(--accent); }
+
+.lookup-input-row { display:flex; gap:10px; margin-bottom:18px; }
+.lookup-input {
+  flex:1; background:var(--bg); border:1px solid var(--border);
+  border-radius:10px; padding:10px 16px; font-size:13px;
+  color:var(--text-1); font-family:var(--mono); outline:none;
+  transition:border-color .2s;
+}
+.lookup-input:focus { border-color:var(--accent); }
+.lookup-btn {
+  padding:10px 22px; border-radius:10px; background:rgba(0,255,136,.12);
+  border:1px solid var(--accent); color:var(--accent); font-weight:700;
+  font-size:13px; cursor:pointer; transition:.2s;
+}
+.lookup-btn:hover { background:rgba(0,255,136,.22); }
+
+/* ── Result panel ────────────────────────────── */
+.result-panel {
+  display:none; border-radius:12px; border:1px solid var(--border);
+  overflow:hidden; animation:fadeIn .3s ease;
+}
+.result-panel.show { display:block; }
+.result-header {
+  display:flex; align-items:center; gap:14px;
+  padding:18px 22px; border-bottom:1px solid var(--border);
+}
+.result-icon  { font-size:36px; }
+.result-name  { font-size:18px; font-weight:700; }
+.result-stream{
+  font-size:10px; font-family:var(--mono); margin-top:4px;
+  padding:2px 10px; border-radius:10px; display:inline-block;
+}
+.stream-bio  { background:rgba(132,204,22,.15); color:#84cc16; }
+.stream-rec  { background:rgba(0,255,136,.12);  color:#00ff88; }
+.stream-haz  { background:rgba(239,68,68,.12);  color:#ef4444; }
+.stream-res  { background:rgba(148,163,184,.1); color:#94a3b8; }
+
+.result-body { padding:20px 22px; display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+@media(max-width:700px){ .result-body{ grid-template-columns:1fr; } }
+
+.rb-section h4 {
+  font-size:11px; font-weight:700; letter-spacing:.08em;
+  color:var(--text-3); text-transform:uppercase; margin-bottom:10px;
+  font-family:var(--mono);
+}
+.step-list { list-style:none; padding:0; margin:0; }
+.step-list li {
+  display:flex; align-items:flex-start; gap:10px; margin-bottom:10px;
+  font-size:12px; color:var(--text-2); line-height:1.5;
+}
+.step-num {
+  min-width:22px; height:22px; border-radius:50%;
+  background:rgba(0,255,136,.12); border:1px solid var(--accent);
+  color:var(--accent); font-size:10px; font-weight:700;
+  display:flex; align-items:center; justify-content:center;
+  font-family:var(--mono);
+}
+.tip-list { display:flex; flex-direction:column; gap:8px; }
+.tip-item {
+  display:flex; gap:10px; font-size:12px; color:var(--text-2);
+  padding:8px 12px; border-radius:8px; border:1px solid var(--border);
+  background:var(--bg); line-height:1.5;
+}
+.tip-icon { font-size:16px; flex-shrink:0; }
+
+.do-dont { display:flex; gap:12px; margin-top:4px; }
+.do-col, .dont-col { flex:1; }
+.do-col h5  { font-size:10px; color:#00ff88; font-family:var(--mono); font-weight:700; margin-bottom:8px; }
+.dont-col h5{ font-size:10px; color:#ef4444; font-family:var(--mono); font-weight:700; margin-bottom:8px; }
+.dd-item {
+  font-size:11px; color:var(--text-2); padding:5px 10px; border-radius:6px;
+  margin-bottom:5px; line-height:1.4;
+}
+.do-col .dd-item   { background:rgba(0,255,136,.07); border-left:2px solid #00ff88; }
+.dont-col .dd-item { background:rgba(239,68,68,.07);  border-left:2px solid #ef4444; }
+
+.impact-bar-row { display:flex; gap:8px; flex-direction:column; margin-top:6px; }
+.impact-row {
+  display:flex; align-items:center; gap:10px; font-size:11px; font-family:var(--mono);
+}
+.impact-label { color:var(--text-3); width:100px; flex-shrink:0; }
+.impact-bar-wrap { flex:1; height:6px; background:var(--border); border-radius:3px; overflow:hidden; }
+.impact-bar-fill { height:100%; border-radius:3px; transition:width .6s ease; }
+.impact-value { color:var(--text-2); width:60px; text-align:right; }
+
+/* ── Category grid ───────────────────────────── */
+.cat-grid {
+  display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr));
+  gap:14px; margin-bottom:32px;
+}
+.cat-card {
+  background:var(--card); border:1px solid var(--border); border-radius:14px;
+  padding:18px; cursor:pointer; transition:all .2s; text-align:center;
+}
+.cat-card:hover { border-color:var(--accent); transform:translateY(-2px); box-shadow:0 4px 20px rgba(0,255,136,.1); }
+.cat-card.selected { border-color:var(--accent); background:rgba(0,255,136,.07); }
+.cat-icon  { font-size:32px; margin-bottom:8px; }
+.cat-name  { font-size:13px; font-weight:700; color:var(--text-1); margin-bottom:4px; }
+.cat-sub   { font-size:10px; color:var(--text-3); font-family:var(--mono); }
+
+/* ── Common items quick-ref ──────────────────── */
+.common-grid {
+  display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:10px;
+}
+.common-item {
+  background:var(--bg); border:1px solid var(--border); border-radius:10px;
+  padding:10px 12px; font-size:11px; color:var(--text-2);
+  display:flex; align-items:center; gap:8px; cursor:pointer; transition:.15s;
+}
+.common-item:hover { border-color:var(--accent); color:var(--accent); }
+
+@keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page">
+  <div class="rg-hero">
+    <h1>♻️ Recycle Guide</h1>
+    <p>Select a waste type — or describe what you have — to get step-by-step recycling instructions</p>
+  </div>
+
+  <!-- ── Smart Lookup Tool ──────────────────────────────── -->
+  <div class="lookup-card">
+    <div class="lookup-title">🔍 What do you want to recycle?</div>
+    <div class="lookup-sub">Pick a category or type an item name (e.g. "plastic bottle", "old phone", "cardboard box")</div>
+
+    <div class="lookup-tabs" id="lookup-tabs">
+      <button class="lt-tab" onclick="selectTab('Plastic')">🧴 Plastic</button>
+      <button class="lt-tab" onclick="selectTab('Paper')">📄 Paper</button>
+      <button class="lt-tab" onclick="selectTab('Cardboard')">📦 Cardboard</button>
+      <button class="lt-tab" onclick="selectTab('Metal')">🔩 Metal</button>
+      <button class="lt-tab" onclick="selectTab('Glass')">🔮 Glass</button>
+      <button class="lt-tab" onclick="selectTab('Organic')">🌿 Organic</button>
+      <button class="lt-tab" onclick="selectTab('E-Waste')">💻 E-Waste</button>
+      <button class="lt-tab" onclick="selectTab('Trash')">🗑️ General Trash</button>
+    </div>
+
+    <div class="lookup-input-row">
+      <input class="lookup-input" id="item-input" type="text"
+        placeholder="e.g. plastic bottle, newspaper, old laptop, banana peel…"
+        oninput="onInputChange()" onkeydown="if(event.key==='Enter') lookupItem()">
+      <button class="lookup-btn" onclick="lookupItem()">Get Guide →</button>
+    </div>
+
+    <!-- Result panel -->
+    <div class="result-panel" id="result-panel">
+      <div class="result-header" id="result-header"></div>
+      <div class="result-body" id="result-body"></div>
+    </div>
+  </div>
+
+  <!-- ── Browse All Categories ─────────────────────────── -->
+  <div class="sec-hdr">
+    <div class="sec-title">Browse All Waste Categories</div>
+    <span class="text-xs text-muted text-mono">click any card to view guide</span>
+  </div>
+  <div class="cat-grid" id="cat-grid">
+    <!-- filled by JS -->
+  </div>
+
+  <!-- ── Quick Reference ───────────────────────────────── -->
+  <div class="sec-hdr">
+    <div class="sec-title">Common Items — Quick Lookup</div>
+  </div>
+  <div class="card" style="padding:20px;margin-bottom:24px">
+    <div class="common-grid" id="common-grid">
+      <!-- filled by JS -->
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const GUIDE = {
+  Plastic: {
+    icon: '🧴', color: '#00ff88',
+    stream: 'Recyclable', streamClass: 'stream-rec',
+    tagline: 'Sorted by resin code → melted into pellets → new products',
+    steps: [
+      'Check the resin code (▲1–7) on the bottom of the item.',
+      'Empty and rinse the container — no food residue.',
+      'Remove lids (recycle separately if labeled) and labels if possible.',
+      'Crush bottles to save space in the recycling bin.',
+      'Place in the blue/dry-waste bin. Do NOT bag recyclables in plastic bags.',
+    ],
+    tips: [
+      { icon:'💡', text:'Codes 1 (PET) and 2 (HDPE) are most widely accepted — water bottles, milk jugs.' },
+      { icon:'⚠️', text:'Black plastic trays are usually NOT recyclable — sensors in sorting plants can\'t detect them.' },
+      { icon:'🌍', text:'Recycling 1 tonne of plastic saves ~1.5 tonnes of CO₂ vs landfill.' },
+    ],
+    dos:   ['Rinse containers', 'Check the resin code', 'Crush bottles flat', 'Recycle rigid plastics'],
+    donts: ['Bag recyclables in plastic bags', 'Recycle greasy food containers', 'Recycle plastic wrap/film', 'Mix with organic waste'],
+    impact: { 'CO₂ saved': [75, '#00ff88'], 'Energy saved': [88, '#00d4ff'], 'Water saved': [60, '#84cc16'], 'Landfill diverted': [90, '#f59e0b'] },
+  },
+  Paper: {
+    icon: '📄', color: '#f59e0b',
+    stream: 'Recyclable', streamClass: 'stream-rec',
+    tagline: 'Pulped with water → filtered → pressed → new paper',
+    steps: [
+      'Keep paper dry — wet paper fibres break and cannot be pulped.',
+      'Remove staples, binder clips, and plastic windows from envelopes.',
+      'Flatten and stack sheets — they compress better in the collection bin.',
+      'Place in the dry-waste / paper recycling bin.',
+      'Do not shred documents unless required — shredded fibres are too short to recycle.',
+    ],
+    tips: [
+      { icon:'💡', text:'Paper can be recycled 5–7 times before fibres become too short.' },
+      { icon:'⚠️', text:'Wax-coated paper (cup liners, butter wrappers) cannot be recycled.' },
+      { icon:'🌍', text:'Recycling 1 tonne of paper saves 17 trees and 26,500 litres of water.' },
+    ],
+    dos:   ['Keep paper dry', 'Remove metal clips', 'Include newspapers & magazines', 'Flatten before binning'],
+    donts: ['Recycle greasy pizza boxes', 'Recycle wax-coated paper', 'Recycle tissues/napkins', 'Shred unnecessarily'],
+    impact: { 'CO₂ saved': [65, '#f59e0b'], 'Trees saved': [80, '#84cc16'], 'Water saved': [70, '#00d4ff'], 'Landfill diverted': [85, '#00ff88'] },
+  },
+  Cardboard: {
+    icon: '📦', color: '#f97316',
+    stream: 'Recyclable', streamClass: 'stream-rec',
+    tagline: 'Broken down → repulped → new boxes and packaging',
+    steps: [
+      'Break all boxes flat to reduce volume by up to 80%.',
+      'Remove any plastic tape or bubble-wrap lining.',
+      'Check for grease or food contamination — if heavily soiled, compost instead.',
+      'Bundle flattened boxes and tie with twine or place in the blue bin.',
+      'Wet or mulch-soaked cardboard should go to composting.',
+    ],
+    tips: [
+      { icon:'💡', text:'Corrugated cardboard (the wavy inner layer) is the most valuable grade.' },
+      { icon:'⚠️', text:'Pizza boxes with heavy grease on the bottom half → tear off clean top, compost the rest.' },
+      { icon:'🌍', text:'Recycled cardboard uses 75% less energy than producing virgin board.' },
+    ],
+    dos:   ['Flatten all boxes', 'Remove plastic tape', 'Bundle together', 'Keep dry'],
+    donts: ['Recycle greasy/soiled boards', 'Leave boxes full-sized', 'Mix with wet waste', 'Use as burn material'],
+    impact: { 'CO₂ saved': [60, '#f97316'], 'Energy saved': [75, '#00d4ff'], 'Trees saved': [70, '#84cc16'], 'Landfill diverted': [88, '#00ff88'] },
+  },
+  Metal: {
+    icon: '🔩', color: '#94a3b8',
+    stream: 'Recyclable', streamClass: 'stream-rec',
+    tagline: 'Shredded → smelted → rolled into sheets → new metal products',
+    steps: [
+      'Rinse food and drink cans — remove all residue.',
+      'Crush cans to save space (optional but helpful).',
+      'Separate ferrous (magnetic — steel) from non-ferrous (aluminium, copper).',
+      'Remove plastic lids and labels where possible.',
+      'Place in dry-waste bin or dedicated metal collection point.',
+    ],
+    tips: [
+      { icon:'💡', text:'Aluminium is infinitely recyclable and recycling saves 95% of the energy vs smelting virgin ore.' },
+      { icon:'⚠️', text:'Aerosol cans must be completely empty before recycling — never puncture.' },
+      { icon:'🌍', text:'Recycling 1 tonne of aluminium saves 9 tonnes of CO₂.' },
+    ],
+    dos:   ['Rinse cans', 'Recycle aerosols (empty)', 'Include foil & trays', 'Crush to save space'],
+    donts: ['Recycle sharp metal shards loose', 'Include paint/chemical cans', 'Mix with e-waste', 'Recycle pressurised cans with contents'],
+    impact: { 'CO₂ saved': [90, '#94a3b8'], 'Energy saved': [95, '#00ff88'], 'Water saved': [40, '#00d4ff'], 'Landfill diverted': [92, '#f59e0b'] },
+  },
+  Glass: {
+    icon: '🔮', color: '#00d4ff',
+    stream: 'Recyclable', streamClass: 'stream-rec',
+    tagline: 'Crushed into cullet → melted at 1500°C → new glass — infinitely',
+    steps: [
+      'Rinse bottles and jars — remove food residue.',
+      'Remove metal lids and recycle them separately.',
+      'Do NOT break glass — whole items sort better at the facility.',
+      'Place in the glass / dry-waste bin or a glass bank (coloured glass separately where required).',
+      'Never dispose of glass in general black bags where it can injure handlers.',
+    ],
+    tips: [
+      { icon:'💡', text:'Glass is 100% recyclable with zero quality loss — a bottle can become a bottle again in 30 days.' },
+      { icon:'⚠️', text:'Pyrex, mirrors, and window glass have different melting points — do NOT mix with bottle glass.' },
+      { icon:'🌍', text:'Every tonne of recycled glass saves ~580 kg of CO₂.' },
+    ],
+    dos:   ['Rinse jars & bottles', 'Remove metal caps', 'Sort by colour where required', 'Use glass banks'],
+    donts: ['Break glass before disposal', 'Include pyrex/mirrors/ceramics', 'Mix with organic waste', 'Place loose shards in thin bags'],
+    impact: { 'CO₂ saved': [58, '#00d4ff'], 'Energy saved': [30, '#00ff88'], 'Raw material saved': [80, '#84cc16'], 'Landfill diverted': [100, '#f59e0b'] },
+  },
+  Organic: {
+    icon: '🌿', color: '#84cc16',
+    stream: 'Biodegradable', streamClass: 'stream-bio',
+    tagline: 'Composted → rich soil amendment OR biogas plant → clean energy',
+    steps: [
+      'Separate food scraps from packaging before disposal.',
+      'Collect in a small kitchen caddy with a compostable liner.',
+      'Empty into the green/wet-waste bin daily to avoid odours.',
+      'At home: layer kitchen scraps with dry leaves in a compost bin (greens + browns).',
+      'For biogas: deliver to community anaerobic digestion plant if available.',
+    ],
+    tips: [
+      { icon:'💡', text:'Composting 1 kg of food waste instead of landfilling prevents ~1–2 kg of methane emissions.' },
+      { icon:'⚠️', text:'Meat, dairy, and oily food are best sent to biogas plants — they attract pests in home compost.' },
+      { icon:'🌍', text:'Compost improves soil water retention by 20% — vital for drought-prone areas like Bhopal.' },
+    ],
+    dos:   ['Compost fruit & veg scraps', 'Add tea bags & coffee grounds', 'Mix with dry carbon material', 'Use a sealed caddy indoors'],
+    donts: ['Include plastic packaging', 'Compost meat/dairy at home', 'Add diseased plants', 'Let it become waterlogged'],
+    impact: { 'Methane reduced': [85, '#84cc16'], 'Soil enriched': [90, '#00ff88'], 'Landfill diverted': [80, '#f59e0b'], 'Water retained': [20, '#00d4ff'] },
+  },
+  'E-Waste': {
+    icon: '💻', color: '#a855f7',
+    stream: 'Hazardous', streamClass: 'stream-haz',
+    tagline: 'Certified dismantling → precious metals recovered → safe disposal of toxics',
+    steps: [
+      'Back up and wipe personal data before handing over any device.',
+      'Never discard e-waste in general bins — batteries and chemicals are toxic.',
+      'Locate a certified e-waste collection centre or manufacturer take-back programme.',
+      'Drop off at an authorised recycler — many electronics stores accept old devices.',
+      'For batteries: use designated battery drop-off points (supermarkets, councils).',
+    ],
+    tips: [
+      { icon:'💡', text:'A tonne of mobile phones contains ~300g of gold — 80× more than gold ore.' },
+      { icon:'⚠️', text:'Lithium batteries can cause fires in waste trucks — always remove from devices if possible.' },
+      { icon:'🌍', text:'India generates ~3.2 million tonnes of e-waste per year — only ~5% is formally recycled.' },
+    ],
+    dos:   ['Use certified recyclers', 'Wipe data first', 'Remove batteries', 'Donate working devices'],
+    donts: ['Put in general bin', 'Landfill batteries', 'Burn e-waste', 'Dismantle without protection'],
+    impact: { 'Toxic metals contained': [95, '#a855f7'], 'Gold recovered': [70, '#f59e0b'], 'CO₂ saved': [55, '#00ff88'], 'Landfill diverted': [100, '#ef4444'] },
+  },
+  Trash: {
+    icon: '🗑️', color: '#ef4444',
+    stream: 'Residual', streamClass: 'stream-res',
+    tagline: 'Reduce first → residual waste to engineered landfill or WtE',
+    steps: [
+      'First, check if any component is recyclable (plastic, metal, paper, glass).',
+      'Separate hazardous items (batteries, chemicals) before disposing.',
+      'Bag remaining residual waste securely to prevent litter and leachate.',
+      'Place in the black / residual-waste bin for municipal collection.',
+      'Advocate for Waste-to-Energy (WtE) plants that convert residual waste into electricity.',
+    ],
+    tips: [
+      { icon:'💡', text:'On average 40–60% of "trash" can actually be recycled or composted — sort before you bin.' },
+      { icon:'⚠️', text:'Residual waste in India largely ends up in open dumpsites — minimising it has direct local impact.' },
+      { icon:'🌍', text:'Reducing by 1 kg of residual waste prevents ~0.5 kg of CO₂-equivalent from uncontrolled decomposition.' },
+    ],
+    dos:   ['Sort out recyclables first', 'Bag waste properly', 'Report illegal dumping', 'Support WtE infrastructure'],
+    donts: ['Litter or burn waste', 'Mix hazardous items', 'Throw recyclables in trash', 'Leave bags open'],
+    impact: { 'Prevention (source)': [40, '#ef4444'], 'WtE energy recovery': [60, '#f59e0b'], 'Landfill reduction': [35, '#84cc16'], 'Litter prevention': [80, '#00d4ff'] },
+  },
+};
+
+const COMMON_ITEMS = [
+  { label:'Water bottle',   cat:'Plastic',   icon:'🍶' },
+  { label:'Plastic bag',    cat:'Plastic',   icon:'🛍️' },
+  { label:'Milk carton',    cat:'Cardboard', icon:'🥛' },
+  { label:'Pizza box',      cat:'Cardboard', icon:'🍕' },
+  { label:'Newspaper',      cat:'Paper',     icon:'📰' },
+  { label:'Envelope',       cat:'Paper',     icon:'✉️' },
+  { label:'Tin can',        cat:'Metal',     icon:'🥫' },
+  { label:'Aluminium foil', cat:'Metal',     icon:'🫙' },
+  { label:'Wine bottle',    cat:'Glass',     icon:'🍷' },
+  { label:'Jam jar',        cat:'Glass',     icon:'🫙' },
+  { label:'Banana peel',    cat:'Organic',   icon:'🍌' },
+  { label:'Tea bags',       cat:'Organic',   icon:'🍵' },
+  { label:'Old phone',      cat:'E-Waste',   icon:'📱' },
+  { label:'Laptop',         cat:'E-Waste',   icon:'💻' },
+  { label:'Battery',        cat:'E-Waste',   icon:'🔋' },
+  { label:'Broken umbrella',cat:'Trash',     icon:'☂️' },
+  { label:'Chip packet',    cat:'Trash',     icon:'🍟' },
+  { label:'Styrofoam cup',  cat:'Trash',     icon:'☕' },
+];
+
+// keyword → category mapping for free-text search
+const KEYWORDS = {
+  Plastic:   ['plastic','bottle','container','tub','wrapper','polythene','pvc','pet','hdpe','straw','cup lid'],
+  Paper:     ['paper','newspaper','magazine','book','office paper','envelope','tissue','shredded','receipt','bill'],
+  Cardboard: ['cardboard','box','carton','packaging','corrugated','pizza box'],
+  Metal:     ['metal','can','tin','aluminium','aluminum','foil','steel','iron','aerosol','scrap'],
+  Glass:     ['glass','bottle','jar','mirror','window','pyrex','vase'],
+  Organic:   ['organic','food','vegetable','fruit','peel','scraps','leaves','compost','grass','garden','biodegradable','banana','coffee','tea'],
+  'E-Waste': ['electronic','ewaste','e-waste','phone','laptop','computer','battery','cable','charger','tv','printer','tablet','keyboard','mouse'],
+  Trash:     ['trash','rubbish','garbage','residual','diaper','nappy','styrofoam','foam','chip packet','crisp'],
+};
+
+let selectedCat = null;
+
+function selectTab(cat) {
+  selectedCat = cat;
+  document.querySelectorAll('.lt-tab').forEach(t => {
+    t.classList.toggle('active', t.textContent.includes(cat === 'E-Waste' ? 'E-Waste' : cat.split(' ')[0]) || t.textContent.includes(cat));
+  });
+  showGuide(cat);
+}
+
+function onInputChange() {
+  // Clear tab selection if user is typing
+  const val = document.getElementById('item-input').value.trim();
+  if (!val) return;
+  document.querySelectorAll('.lt-tab').forEach(t => t.classList.remove('active'));
+  selectedCat = null;
+}
+
+function lookupItem() {
+  const raw = document.getElementById('item-input').value.trim().toLowerCase();
+  if (!raw && !selectedCat) { alert('Please select a category or type an item.'); return; }
+  if (!raw && selectedCat) { showGuide(selectedCat); return; }
+
+  // Match against keywords
+  let matched = null;
+  for (const [cat, kws] of Object.entries(KEYWORDS)) {
+    if (kws.some(k => raw.includes(k))) { matched = cat; break; }
+  }
+  // fallback: partial name match
+  if (!matched) {
+    for (const item of COMMON_ITEMS) {
+      if (item.label.toLowerCase().includes(raw) || raw.includes(item.label.toLowerCase())) {
+        matched = item.cat; break;
+      }
+    }
+  }
+  if (!matched) matched = selectedCat;
+  if (!matched) {
+    document.getElementById('result-panel').className = 'result-panel';
+    document.getElementById('result-header').innerHTML = `<div style="padding:4px 0;color:var(--text-2);font-size:13px">⚠️ Could not identify waste type for "<strong>${raw}</strong>". Try a category button above or a more specific term.</div>`;
+    document.getElementById('result-panel').className = 'result-panel show';
+    document.getElementById('result-body').innerHTML = '';
+    return;
+  }
+  showGuide(matched);
+}
+
+function showGuide(cat) {
+  const g = GUIDE[cat];
+  if (!g) return;
+
+  // Highlight cat card
+  document.querySelectorAll('.cat-card').forEach(c => c.classList.toggle('selected', c.dataset.cat === cat));
+
+  // Header
+  document.getElementById('result-header').innerHTML = `
+    <div class="result-icon">${g.icon}</div>
+    <div>
+      <div class="result-name">${cat}</div>
+      <span class="result-stream ${g.streamClass}">${g.stream} Waste</span>
+      <div style="font-size:11px;color:var(--text-3);margin-top:4px;font-family:var(--mono)">${g.tagline}</div>
+    </div>`;
+
+  // Build impact bars HTML
+  const impactHTML = Object.entries(g.impact).map(([label, [pct, col]]) => `
+    <div class="impact-row">
+      <span class="impact-label">${label}</span>
+      <div class="impact-bar-wrap">
+        <div class="impact-bar-fill" style="width:0%;background:${col}" data-w="${pct}"></div>
+      </div>
+      <span class="impact-value">${pct}%</span>
+    </div>`).join('');
+
+  // Body
+  document.getElementById('result-body').innerHTML = `
+    <div class="rb-section">
+      <h4>Step-by-Step Recycling</h4>
+      <ul class="step-list">
+        ${g.steps.map((s,i) => `<li><span class="step-num">${i+1}</span><span>${s}</span></li>`).join('')}
+      </ul>
+    </div>
+    <div class="rb-section">
+      <h4>Key Tips</h4>
+      <div class="tip-list">
+        ${g.tips.map(t => `<div class="tip-item"><span class="tip-icon">${t.icon}</span><span>${t.text}</span></div>`).join('')}
+      </div>
+      <h4 style="margin-top:16px">Do's & Don'ts</h4>
+      <div class="do-dont">
+        <div class="do-col">
+          <h5>✅ DO</h5>
+          ${g.dos.map(d => `<div class="dd-item">${d}</div>`).join('')}
+        </div>
+        <div class="dont-col">
+          <h5>❌ DON'T</h5>
+          ${g.donts.map(d => `<div class="dd-item">${d}</div>`).join('')}
+        </div>
+      </div>
+      <h4 style="margin-top:16px">Environmental Impact</h4>
+      <div class="impact-bar-row">${impactHTML}</div>
+    </div>`;
+
+  document.getElementById('result-panel').className = 'result-panel show';
+
+  // Animate impact bars
+  setTimeout(() => {
+    document.querySelectorAll('.impact-bar-fill[data-w]').forEach(el => {
+      el.style.width = el.dataset.w + '%';
+    });
+  }, 80);
+
+  // Scroll to result
+  document.getElementById('result-panel').scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+
+// Build category grid
+function buildCatGrid() {
+  const grid = document.getElementById('cat-grid');
+  grid.innerHTML = Object.entries(GUIDE).map(([cat, g]) => `
+    <div class="cat-card" data-cat="${cat}" onclick="selectTab('${cat}');document.getElementById('result-panel').scrollIntoView({behavior:'smooth'})">
+      <div class="cat-icon">${g.icon}</div>
+      <div class="cat-name">${cat}</div>
+      <div class="cat-sub"><span class="result-stream ${g.streamClass}" style="font-size:9px;padding:1px 7px">${g.stream}</span></div>
+    </div>`).join('');
+}
+
+// Build common items grid
+function buildCommonGrid() {
+  const grid = document.getElementById('common-grid');
+  grid.innerHTML = COMMON_ITEMS.map(item => `
+    <div class="common-item" onclick="document.getElementById('item-input').value='${item.label}';lookupItem()">
+      <span>${item.icon}</span><span>${item.label}</span>
+    </div>`).join('');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  buildCatGrid();
+  buildCommonGrid();
+});
+</script>
+{% endblock %}

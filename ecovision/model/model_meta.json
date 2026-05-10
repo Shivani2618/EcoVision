@@ -1,0 +1,32 @@
+{
+  "model": "yolov8n-cls.pt",
+  "framework": "ultralytics YOLOv8",
+  "task": "classify",
+  "classes": [
+    "Battery",
+    "Organic",
+    "Cardboard",
+    "Clothes",
+    "Glass",
+    "Metal",
+    "Paper",
+    "Plastic",
+    "Shoes",
+    "Trash"
+  ],
+  "image_size": 224,
+  "dataset": "garbage-classification-v2 (local)",
+  "split": {
+    "train": "70%",
+    "val": "15%",
+    "test": "15%"
+  },
+  "train_metrics": {
+    "top1": 94.83,
+    "top5": 99.78
+  },
+  "test_metrics": {
+    "test_top1": 94.57,
+    "test_top5": 99.62
+  }
+}

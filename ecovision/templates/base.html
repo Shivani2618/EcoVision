@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <meta name="theme-color" content="#00ff88"/>
+  <meta name="description" content="ECOVISION smart waste intelligence and AI classification platform."/>
+  <link rel="manifest" href="/manifest.webmanifest"/>
+  <title>ECOVISION — {% block title %}Smart Waste Intelligence{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}"/>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+
+<!-- ── Page Loader ──────────────────────────────────────── -->
+<div id="page-loader">
+  <div class="loader-logo">ECOVISION</div>
+  <div class="loader-bar-wrap"><div class="loader-bar-fill"></div></div>
+  <div class="loader-sub">Smart Waste · Clean Future</div>
+  <div class="loader-status" id="loader-status">Initializing sensors...</div>
+</div>
+
+<!-- ── Sidebar ──────────────────────────────────────────── -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-brand">
+    <div class="brand-row">
+      <div class="brand-icon">♻️</div>
+      <div class="brand-texts">
+        <div class="brand-name">ECOVISION <span class="brand-version">v2</span></div>
+        <div class="brand-tag">Smart Waste Intelligence</div>
+      </div>
+    </div>
+  </div>
+
+  <nav class="sidebar-nav">
+    <div class="nav-section-label">Core</div>
+    <a href="/dashboard" class="nav-link" data-path="/dashboard">
+      <span class="nav-icon">📊</span>
+      <span class="nav-label-text">Command Center</span>
+    </a>
+    <a href="/upload" class="nav-link" data-path="/upload">
+      <span class="nav-icon">🤖</span>
+      <span class="nav-label-text">AI Classifier</span>
+    </a>
+    <a href="/monitoring" class="nav-link" data-path="/monitoring">
+      <span class="nav-icon">📡</span>
+      <span class="nav-label-text">IoT Monitoring</span>
+    </a>
+
+    <div class="nav-section-label">Intelligence</div>
+    <a href="/analytics" class="nav-link" data-path="/analytics">
+      <span class="nav-icon">📈</span>
+      <span class="nav-label-text">Analytics</span>
+      <span class="nav-new">NEW</span>
+    </a>
+<a href="/smart-map" class="nav-link" data-path="/smart-map">
+      <span class="nav-icon">🚚</span>
+      <span class="nav-label-text">Smart City Map</span>
+    </a>
+    <a href="/architecture" class="nav-link" data-path="/architecture">
+      <span class="nav-icon">🏗️</span>
+      <span class="nav-label-text">Architecture</span>
+    </a>
+    <a href="/alerts" class="nav-link" data-path="/alerts">
+      <span class="nav-icon">🚨</span>
+      <span class="nav-label-text">Alert Center</span>
+      <span class="nav-badge" id="alert-badge">0</span>
+    </a>
+
+    <div class="nav-section-label">Insights</div>
+    <a href="/impact" class="nav-link" data-path="/impact">
+      <span class="nav-icon">🌱</span>
+      <span class="nav-label-text">Eco Impact</span>
+      <span class="nav-new">NEW</span>
+    </a>
+    <a href="/recycle-guide" class="nav-link" data-path="/recycle-guide">
+      <span class="nav-icon">♻️</span>
+      <span class="nav-label-text">Recycle Guide</span>
+      <span class="nav-new">NEW</span>
+    </a>
+    <a href="/simulation" class="nav-link" data-path="/simulation">
+      <span class="nav-icon">⚡</span>
+      <span class="nav-label-text">Simulation</span>
+    </a>
+  </nav>
+
+  <div class="sidebar-footer">
+    <div class="ai-pill">
+      <div class="dot-pulse"></div>
+      <span class="ai-status-text">{{ ai_status }}</span>
+    </div>
+    <div class="sys-stats">
+      <div class="sys-stat">
+        <span class="sys-stat-val" id="sb-uptime">--</span>
+        Uptime
+      </div>
+      <div class="sys-stat">
+        <span class="sys-stat-val text-mono" id="sb-bins">6</span>
+        Locations
+      </div>
+    </div>
+  </div>
+</aside>
+
+<!-- Mobile nav -->
+<nav class="mob-nav">
+  <div class="mob-logo">♻️ ECOVISION</div>
+  <div class="notif-wrap">
+    <div class="notif-bell" onclick="refreshAlertBell()">🔔</div>
+    <div class="notif-count" id="mob-alert-count">0</div>
+  </div>
+  <button class="mob-burger" onclick="openSidebar()">
+    <span></span><span></span><span></span>
+  </button>
+</nav>
+<div class="sidebar-overlay" id="sb-overlay" onclick="closeSidebar()"></div>
+
+<!-- ── Main ─────────────────────────────────────────────── -->
+<main class="main">
+  {% block content %}{% endblock %}
+</main>
+
+<!-- ── Toast container ──────────────────────────────────── -->
+<div id="toasts"></div>
+
+<!-- ── Scripts ──────────────────────────────────────────── -->
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+<script>
+function showDemoToast(msg) { if (typeof toast === "function") toast(msg, "", "Info"); }
+</script>
+{% block extra_scripts %}{% endblock %}
+
+</body>
+</html>

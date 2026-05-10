@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block title %}Eco Impact{% endblock %}
+
+{% block content %}
+<div class="page">
+  <div class="ph">
+    <div class="ph-left">
+      <h1>🌱 Environmental Impact</h1>
+      <p>Track our platform's real-world sustainability contribution</p>
+    </div>
+    <div class="ph-right">
+      <div class="live-chip"><div class="dot"></div> LIVE</div>
+    </div>
+  </div>
+
+  <!-- Impact KPIs -->
+  <div class="impact-grid" id="impact-kpis">
+    <div class="card impact-card">
+      <span class="impact-icon">🌿</span>
+      <div class="impact-val" id="co2-val">--</div>
+      <div class="impact-lbl">kg CO₂ Emissions Saved</div>
+    </div>
+    <div class="card impact-card">
+      <span class="impact-icon">🌳</span>
+      <div class="impact-val" id="trees-val">--</div>
+      <div class="impact-lbl">Trees Equivalent (annual)</div>
+    </div>
+    <div class="card impact-card">
+      <span class="impact-icon">♻️</span>
+      <div class="impact-val" id="recycle-val">--%</div>
+      <div class="impact-lbl">Recycling Efficiency</div>
+    </div>
+    <div class="card impact-card">
+      <span class="impact-icon">⚖️</span>
+      <div class="impact-val" id="weight-val">--</div>
+      <div class="impact-lbl">Total Waste Managed (kg)</div>
+    </div>
+    <div class="card impact-card">
+      <span class="impact-icon">🏆</span>
+      <div class="impact-val" id="score-val">--</div>
+      <div class="impact-lbl">Efficiency Score / 100</div>
+    </div>
+  </div>
+
+  <!-- Charts row -->
+  <div class="charts-grid">
+    <div class="card chart-card">
+      <div class="chart-hdr">
+        <div class="chart-title">CO₂ Saved by Waste Type</div>
+      </div>
+      <canvas id="co2-chart" height="220"></canvas>
+    </div>
+    <div class="card chart-card">
+      <div class="chart-hdr">
+        <div class="chart-title">Recyclable vs Non-recyclable</div>
+      </div>
+      <canvas id="recycle-donut" height="220"></canvas>
+    </div>
+  </div>
+
+  <!-- Per-type impact breakdown -->
+  <div class="sec-hdr">
+    <div class="sec-title">Impact per Waste Category</div>
+  </div>
+  <div id="type-impact-cards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;margin-bottom:28px"></div>
+
+  <!-- Sustainability tips -->
+  <div class="sec-hdr"><div class="sec-title">💡 Smart Recommendations</div></div>
+  <div class="card" style="padding:22px">
+    <div id="sustainability-tips" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+let co2C=null,recycleC=null;
+const CAT_COLORS={'Plastic':'#00ff88','Paper':'#f59e0b','Organic':'#84cc16','Metal':'#94a3b8','Glass':'#00d4ff','E-Waste':'#a855f7'};
+const CAT_ICONS={'Plastic':'🧴','Paper':'📄','Organic':'🌿','Metal':'🔩','Glass':'🔮','E-Waste':'💻'};
+
+async function loadImpact() {
+  const data = await fetch('/api/impact').then(r=>r.json());
+  document.getElementById('co2-val').textContent   = data.co2_saved_kg;
+  document.getElementById('trees-val').textContent = data.trees_equivalent;
+  document.getElementById('recycle-val').textContent = data.recycle_pct + '%';
+  document.getElementById('weight-val').textContent = data.total_weight_kg;
+  document.getElementById('score-val').textContent  = data.efficiency_score;
+
+  renderCO2Chart(data);
+  renderRecycleChart(data);
+  renderTypeCards(data);
+  renderTips(data);
+}
+
+const plugOpts = { legend:{display:false}, tooltip:{backgroundColor:'#0a140a',titleColor:'#e2ffe2',bodyColor:'#7aaa7a',borderColor:'rgba(0,255,136,0.15)',borderWidth:1,padding:10,cornerRadius:8}};
+
+function renderCO2Chart(data) {
+  const cats = Object.keys(data.type_impact);
+  const co2s = cats.map(c => data.type_impact[c].co2_saved);
+  const colors = cats.map(c => CAT_COLORS[c]||'#00ff88');
+  if (co2C) co2C.destroy();
+  co2C = new Chart(document.getElementById('co2-chart'),{
+    type:'bar',
+    data:{ labels:cats.map(c=>CAT_ICONS[c]+' '+c), datasets:[{ data:co2s, backgroundColor:colors.map(c=>c+'44'), borderColor:colors, borderWidth:2, borderRadius:10, borderSkipped:false }]},
+    options:{ responsive:true, plugins:{...plugOpts,tooltip:{...plugOpts.tooltip,callbacks:{label:(ctx)=>`${ctx.parsed.y} kg CO₂`}}}, scales:{ x:{ticks:{color:'#3a5a3a',font:{family:'Fira Code',size:11}},grid:{display:false}}, y:{ticks:{color:'#3a5a3a',font:{family:'Fira Code',size:11}},grid:{color:'rgba(0,255,136,0.04)'},beginAtZero:true}}}
+  });
+}
+
+function renderRecycleChart(data) {
+  const totalW = data.total_weight_kg;
+  const recycleW = Object.entries(data.type_impact).filter(([,v])=>v.recyclable).reduce((s,[,v])=>s+v.weight_kg,0);
+  const nonRec = totalW - recycleW;
+  if (recycleC) recycleC.destroy();
+  recycleC = new Chart(document.getElementById('recycle-donut'),{
+    type:'doughnut',
+    data:{
+      labels:['Recyclable','Non-recyclable'],
+      datasets:[{ data:[recycleW.toFixed(2), nonRec.toFixed(2)], backgroundColor:['rgba(0,255,136,0.5)','rgba(255,68,68,0.3)'], borderColor:['#00ff88','#ff4444'], borderWidth:2, hoverOffset:8 }]
+    },
+    options:{ responsive:true, cutout:'62%', plugins:{legend:{display:true,position:'bottom',labels:{color:'#7aaa7a',font:{family:'Fira Code',size:11},padding:16}}, tooltip:{...plugOpts.tooltip,callbacks:{label:(ctx)=>`${ctx.parsed} kg`}}}}
+  });
+}
+
+function renderTypeCards(data) {
+  const el = document.getElementById('type-impact-cards');
+  el.innerHTML = Object.entries(data.type_impact).map(([type, v]) => {
+    const color = CAT_COLORS[type]||'#00ff88';
+    return `
+    <div class="card" style="padding:18px;border-color:${color}22;border-left:3px solid ${color}">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+        <span style="font-size:24px">${CAT_ICONS[type]||'♻️'}</span>
+        <span style="font-weight:700;font-size:15px">${type}</span>
+        ${v.recyclable?'<span class="badge recyclable-yes" style="margin-left:auto">♻️</span>':'<span class="badge recyclable-no" style="margin-left:auto">🚫</span>'}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div style="font-size:10px;color:var(--text-3)">Items</div>
+        <div style="font-family:var(--mono);font-size:13px;color:${color};font-weight:600">${v.items}</div>
+        <div style="font-size:10px;color:var(--text-3)">Weight</div>
+        <div style="font-family:var(--mono);font-size:13px;color:${color};font-weight:600">${v.weight_kg} kg</div>
+        <div style="font-size:10px;color:var(--text-3)">CO₂ Saved</div>
+        <div style="font-family:var(--mono);font-size:13px;color:${color};font-weight:600">${v.co2_saved} kg</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderTips(data) {
+  const recPct = data.recycle_pct;
+  const tips = [
+    { icon:'💡', title:'Improve Recycling', body: recPct < 60 ? `Current recycling rate is ${recPct}%. Focus on plastic and metal segregation to improve efficiency significantly.` : `Great recycling rate of ${recPct}%! Maintain by improving organic composting.`},
+    { icon:'🌡️', title:'Monitor E-Waste', body:'E-waste saves 15kg CO₂ per kg when properly recycled. Ensure dedicated e-waste pickup routes are prioritized.'},
+    { icon:'🗺️', title:'Route Optimization', body:'AI analysis suggests consolidating collections in Zone A to reduce fuel usage by ~18% and cut carbon footprint.'},
+    { icon:'📊', title:'Peak Hours', body:'Waste generation peaks between 8–10 AM and 5–7 PM. Scheduling pickups post-peak optimizes route efficiency.'},
+  ];
+  document.getElementById('sustainability-tips').innerHTML = tips.map(t => `
+    <div style="padding:16px;background:var(--bg-3);border:1px solid var(--border);border-radius:10px">
+      <div style="font-size:22px;margin-bottom:8px">${t.icon}</div>
+      <div style="font-size:13px;font-weight:600;margin-bottom:6px">${t.title}</div>
+      <div style="font-size:12px;color:var(--text-2);line-height:1.6">${t.body}</div>
+    </div>`).join('');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  loadImpact();
+  setInterval(loadImpact, 15000);
+});
+</script>
+{% endblock %}

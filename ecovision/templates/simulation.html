@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}Simulation{% endblock %}
+
+{% block content %}
+<div class="page">
+  <div class="ph">
+    <div class="ph-left">
+      <h1>⚡ Simulation Engine</h1>
+      <p>Inject demo data, stress-test the system, and generate realistic waste scenarios</p>
+    </div>
+    <div class="ph-right">
+      <div class="live-chip"><div class="dot"></div> SYSTEM READY</div>
+    </div>
+  </div>
+
+  <!-- Control panel -->
+  <div class="charts-grid">
+    <div class="card chart-card">
+      <div class="chart-hdr"><div class="chart-title">Quick Actions</div></div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <button class="btn btn-green" onclick="addDemo()">🎲 Inject Demo Data (12 records)</button>
+        <button class="btn btn-outline" onclick="runBulkSimulation()">🚀 Bulk Simulation (50 records)</button>
+        <button class="btn btn-outline" onclick="simulatePeak()">📈 Simulate Peak Hours</button>
+        <button class="btn btn-danger" onclick="resetBins()">🔄 Reset All Bins</button>
+        <button class="btn btn-outline" onclick="exportCSV()">📥 Export Data CSV</button>
+      </div>
+    </div>
+
+    <div class="card chart-card">
+      <div class="chart-hdr"><div class="chart-title">Simulation Log</div></div>
+      <div id="sim-log" style="font-family:var(--mono);font-size:11px;color:var(--text-2);max-height:280px;overflow-y:auto;display:flex;flex-direction:column;gap:4px">
+        <div style="color:var(--text-3)">[ SIM ] System ready. Awaiting commands...</div>
+      </div>
+    </div>
+
+    <div class="card chart-card">
+      <div class="chart-hdr"><div class="chart-title">Live Bin Levels</div></div>
+      <canvas id="sim-chart" height="200"></canvas>
+    </div>
+  </div>
+
+  <!-- Scenario selector -->
+  <div class="sec-hdr">
+    <div class="sec-title">🎬 Test Scenarios</div>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;margin-bottom:24px">
+    <div class="card" style="padding:18px;cursor:pointer;transition:all .2s" onclick="runScenario('festival')" onmouseover="this.style.borderColor='var(--green)'" onmouseout="this.style.borderColor=''">
+      <div style="font-size:28px;margin-bottom:10px">🎪</div>
+      <div style="font-weight:700;margin-bottom:6px">Festival Scenario</div>
+      <div style="font-size:12px;color:var(--text-2)">High plastic & organic waste generation in short bursts. Tests overflow detection.</div>
+    </div>
+    <div class="card" style="padding:18px;cursor:pointer;transition:all .2s" onclick="runScenario('industrial')" onmouseover="this.style.borderColor='var(--green)'" onmouseout="this.style.borderColor=''">
+      <div style="font-size:28px;margin-bottom:10px">🏭</div>
+      <div style="font-weight:700;margin-bottom:6px">Industrial Zone</div>
+      <div style="font-size:12px;color:var(--text-2)">Heavy metal and e-waste. Tests priority routing and hazardous alerts.</div>
+    </div>
+    <div class="card" style="padding:18px;cursor:pointer;transition:all .2s" onclick="runScenario('residential')" onmouseover="this.style.borderColor='var(--green)'" onmouseout="this.style.borderColor=''">
+      <div style="font-size:28px;margin-bottom:10px">🏘️</div>
+      <div style="font-weight:700;margin-bottom:6px">Residential Area</div>
+      <div style="font-size:12px;color:var(--text-2)">Mixed organic & paper. Tests composting recommendations and recycling rate.</div>
+    </div>
+    <div class="card" style="padding:18px;cursor:pointer;transition:all .2s" onclick="runScenario('critical')" onmouseover="this.style.borderColor='var(--crit)'" onmouseout="this.style.borderColor=''">
+      <div style="font-size:28px;margin-bottom:10px">🚨</div>
+      <div style="font-weight:700;margin-bottom:6px">Critical Overflow</div>
+      <div style="font-size:12px;color:var(--text-2)">All bins reach critical. Tests full alert system, sound, and dashboard response.</div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+let simChart = null;
+
+async function addDemo() {
+  simLog('Injecting 12 demo records...', 'warn');
+  const r = await fetch('/api/demo', { method: 'POST' });
+  const d = await r.json();
+  simLog(d.message || 'Demo data injected.', 'success');
+  if (typeof toast === 'function') toast('Demo Data Added', d.message, '🎲', 'ok-toast');
+  refreshChart();
+}
+
+async function resetBins() {
+  simLog('Resetting bin fill levels...', 'warn');
+  await fetch('/api/reset-bins', { method: 'POST' });
+  simLog('Bin levels reset.', 'success');
+  if (typeof toast === 'function') toast('Bins Reset', 'Fill levels reset for demo', '🔄', 'ok-toast');
+  refreshChart();
+}
+
+function exportCSV() {
+  simLog('Exporting CSV...', 'info');
+  window.location.href = '/api/export-csv';
+}
+
+function simLog(msg, type = 'info') {
+  const log = document.getElementById('sim-log');
+  const color = type === 'success' ? 'var(--green)' : type === 'error' ? 'var(--crit)' : type === 'warn' ? 'var(--warn)' : 'var(--text-2)';
+  const time  = new Date().toLocaleTimeString('en', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  const div = document.createElement('div');
+  div.style.color = color;
+  div.textContent = `[ ${time} ] ${msg}`;
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+}
+
+async function runBulkSimulation() {
+  simLog('Starting bulk simulation (50 records)...', 'warn');
+  for (let i = 0; i < 5; i++) {
+    const r = await fetch('/api/demo', { method:'POST' });
+    const d = await r.json();
+    simLog(`Batch ${i+1}/5 complete — ${d.message}`, 'success');
+    await new Promise(res => setTimeout(res, 800));
+  }
+  simLog('Bulk simulation complete!', 'success');
+  refreshChart();
+}
+
+async function simulatePeak() {
+  simLog('Simulating peak hour surge...', 'warn');
+  for (let i = 0; i < 3; i++) {
+    await fetch('/api/demo', { method:'POST' });
+    simLog(`Peak injection ${i+1}/3`, 'info');
+    await new Promise(res => setTimeout(res, 400));
+  }
+  toast('Peak Simulation Done', '30+ records injected', '📈', 'ok-toast');
+  simLog('Peak simulation done.', 'success');
+  refreshChart();
+}
+
+async function runScenario(type) {
+  simLog(`Running ${type} scenario...`, 'warn');
+  await fetch('/api/demo', { method:'POST' });
+  toast(`${type.charAt(0).toUpperCase()+type.slice(1)} Scenario Active`, 'Data injected into system', '🎬', 'ok-toast');
+  simLog(`${type} scenario complete.`, 'success');
+  refreshChart();
+}
+
+async function refreshChart() {
+  const bins = await fetch('/api/bins').then(r=>r.json());
+  const labels = bins.map(b => b.icon + ' ' + b.type);
+  const values = bins.map(b => b.level);
+  const colors = bins.map(b => b.status === 'critical' ? '#ff4444' : b.status === 'warning' ? '#f59e0b' : '#00ff88');
+
+  if (simChart) simChart.destroy();
+  simChart = new Chart(document.getElementById('sim-chart'), {
+    type:'bar',
+    data:{ labels, datasets:[{ data:values, backgroundColor:colors.map(c=>c+'44'), borderColor:colors, borderWidth:2, borderRadius:8, borderSkipped:false }]},
+    options:{
+      responsive:true,
+      plugins:{ legend:{display:false}, tooltip:{backgroundColor:'#0a140a',titleColor:'#e2ffe2',bodyColor:'#7aaa7a',borderColor:'rgba(0,255,136,0.15)',borderWidth:1,padding:10,cornerRadius:8}},
+      scales:{ x:{ticks:{color:'#3a5a3a',font:{family:'Fira Code',size:11}},grid:{display:false}}, y:{ticks:{color:'#3a5a3a'},grid:{color:'rgba(0,255,136,0.04)'},beginAtZero:true,max:100}}
+    }
+  });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  simLog('ECOVISION Simulation Engine v2.0 initialized.', 'success');
+  simLog('6 bin locations active across city zones.', 'info');
+  refreshChart();
+  setInterval(refreshChart, 5000);
+});
+</script>
+{% endblock %}

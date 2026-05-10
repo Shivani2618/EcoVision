@@ -1,0 +1,492 @@
+{% extends "base.html" %}
+{% block title %}Analytics{% endblock %}
+
+{% block content %}
+<div class="page">
+  <div class="ph">
+    <div class="ph-left">
+      <h1>📈 Waste Analytics</h1>
+      <p>Validated trends, weekly mix, and zone performance from the live database.</p>
+    </div>
+    <div class="ph-right">
+      <div class="live-chip"><span class="dot-pulse"></span>LIVE DATA</div>
+      <button class="btn btn-outline btn-sm" onclick="exportCSV()">⬇ Export CSV</button>
+    </div>
+  </div>
+
+  <div class="stats-row" id="analytics-kpis">
+    <div class="card stat-card">
+      <div class="stat-header"><div class="stat-icon-box" style="background:var(--ok-dim)">♻️</div></div>
+      <div class="stat-val" id="an-total">—</div>
+      <div class="stat-lbl">Total Items Classified</div>
+    </div>
+    <div class="card stat-card">
+      <div class="stat-header"><div class="stat-icon-box" style="background:var(--cyan-dim)">🎯</div></div>
+      <div class="stat-val cyan" id="an-conf">—</div>
+      <div class="stat-lbl">Average Confidence</div>
+    </div>
+    <div class="card stat-card">
+      <div class="stat-header"><div class="stat-icon-box" style="background:var(--ok-dim)">🌱</div></div>
+      <div class="stat-val" id="an-co2">—</div>
+      <div class="stat-lbl">Estimated CO₂ Saved</div>
+    </div>
+    <div class="card stat-card">
+      <div class="stat-header"><div class="stat-icon-box" style="background:var(--warn-dim)">♻️</div></div>
+      <div class="stat-val amber" id="an-recycle">—</div>
+      <div class="stat-lbl">Recycling Rate</div>
+    </div>
+    <div class="card stat-card">
+      <div class="stat-header"><div class="stat-icon-box" style="background:rgba(168,85,247,0.1)">🗑️</div></div>
+      <div class="stat-val purple" id="an-fill">—</div>
+      <div class="stat-lbl">Average Bin Fill</div>
+    </div>
+  </div>
+
+  <div class="charts-grid" style="margin-bottom:20px">
+    <div class="card chart-card">
+      <div class="chart-title">📦 Waste Type Distribution</div>
+      <canvas id="an-pie" height="230"></canvas>
+    </div>
+    <div class="card chart-card">
+      <div class="chart-title">📅 30-Day Daily Trend</div>
+      <canvas id="an-trend" height="230"></canvas>
+    </div>
+  </div>
+
+  <div class="charts-grid" style="margin-bottom:28px">
+    <div class="card chart-card">
+      <div class="chart-title">📊 Last 7 Days by Category</div>
+      <canvas id="an-week" height="200"></canvas>
+    </div>
+    <div class="card chart-card">
+      <div class="chart-title">🌍 CO₂ Saved by Category</div>
+      <canvas id="an-co2-bar" height="200"></canvas>
+    </div>
+  </div>
+
+  <div class="sec-hdr"><div class="sec-title">♻️ Waste Stream Summary</div></div>
+  <div class="bins-grid" id="stream-cards" style="margin-bottom:28px"></div>
+
+  <div class="sec-hdr"><div class="sec-title">🏙️ Zone Performance</div></div>
+  <div class="bins-grid" id="zone-cards" style="margin-bottom:28px"></div>
+
+  <div class="sec-hdr"><div class="sec-title">Collection Frequency</div></div>
+  <div class="bins-grid" id="collection-cards" style="margin-bottom:28px"></div>
+
+  <!-- Predictive Analytics Section -->
+  <div class="sec-hdr">
+    <div class="sec-title">🔮 AI Predictive Analytics — 3-Day Forecast</div>
+    <span class="text-xs text-muted text-mono">Linear trend extrapolation from 14-day history</span>
+  </div>
+  <div class="charts-grid" style="margin-bottom:20px">
+    <div class="card chart-card" style="grid-column:1/-1">
+      <div class="chart-hdr">
+        <div class="chart-title">Waste Generation Forecast (Next 3 Days)</div>
+        <div class="chart-meta" id="forecast-meta">Loading...</div>
+      </div>
+      <canvas id="an-forecast" height="180"></canvas>
+    </div>
+  </div>
+
+  <div class="sec-hdr"><div class="sec-title">📍 Fill Level Risk Forecast — All Locations</div></div>
+  <div class="bins-grid" id="fill-forecast-cards" style="margin-bottom:28px"></div>
+
+  <div class="sec-hdr"><div class="sec-title">📈 Waste Trend Signals</div></div>
+  <div class="bins-grid" id="trend-signal-cards" style="margin-bottom:28px"></div>
+
+  <div id="analytics-empty" style="display:none" class="card">
+    <div class="empty">
+      <span>📊</span>
+      <p>No classification data yet. Upload some waste images to populate analytics.</p>
+      <button class="btn btn-green" style="width:auto;margin-top:16px" onclick="location.href='/upload'">📷 Scan Waste Now</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const COLORS = {
+  Plastic: '#22c55e',
+  Paper: '#f59e0b',
+  Cardboard: '#f97316',
+  Metal: '#94a3b8',
+  Glass: '#06b6d4',
+  Trash: '#ef4444',
+};
+const STREAMS = {
+  Biodegradable: { color:'#84cc16', icon:'🌿' },
+  Recyclable: { color:'#22c55e', icon:'♻️' },
+  Hazardous: { color:'#a855f7', icon:'⚠️' },
+  Residual: { color:'#ef4444', icon:'🗑️' },
+};
+
+let _pie = null, _trend = null, _week = null, _co2bar = null;
+
+function exportCSV() { window.location.href = '/api/export-csv'; }
+
+function tooltipOpts() {
+  return {
+    backgroundColor:'#0d120d',
+    titleColor:'#e8f0e8',
+    bodyColor:'#9aac9a',
+    borderColor:'rgba(34,197,94,0.2)',
+    borderWidth:1,
+    padding:12,
+    cornerRadius:8,
+  };
+}
+
+function setText(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = value;
+}
+
+async function loadAnalytics() {
+  try {
+    const d = await (await fetch('/api/analytics')).json();
+    const empty = (d.total || 0) === 0;
+    document.getElementById('analytics-empty').style.display = empty ? 'block' : 'none';
+
+    setText('an-total', d.total || 0);
+    setText('an-conf', `${d.avg_conf || 0}%`);
+    setText('an-co2', `${d.co2_saved_kg || 0} kg`);
+    setText('an-recycle', `${d.recycle_rate || 0}%`);
+    setText('an-fill', `${d.avg_fill || 0}%`);
+
+    renderPie(d);
+    renderTrend(d);
+    renderWeekly(d);
+    renderCO2(d);
+    renderStreams(d.stream_data || {});
+    renderZones(d.zone_performance || []);
+    renderCollections(d.collection_frequency || []);
+  } catch (e) {
+    console.error('[analytics]', e);
+  }
+}
+
+function renderStreams(streamData) {
+  const el = document.getElementById('stream-cards');
+  if (!el) return;
+  const rows = Object.entries(streamData);
+  if (!rows.length) {
+    el.innerHTML = '<div class="empty"><span>♻️</span><p>Waste stream summary will appear after classifications are logged.</p></div>';
+    return;
+  }
+  el.innerHTML = rows.map(([stream, val]) => {
+    const meta = STREAMS[stream] || { color:'#22c55e', icon:'♻️' };
+    return `
+      <div class="card bin-card" style="border-color:${meta.color}33">
+        <div class="bin-head">
+          <div class="bin-id-row">
+            <div class="bin-icon-box" style="color:${meta.color}">${meta.icon}</div>
+            <div class="bin-name-col">
+              <div class="bin-name">${stream}</div>
+              <div class="bin-weight">${val.weight || 0} kg handled</div>
+            </div>
+          </div>
+          <span class="bin-badge">${val.count || 0} items</span>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function renderPie(d) {
+  const cats = d.categories || [];
+  const counts = cats.map(c => (d.type_counts || {})[c] || 0);
+  const colors = cats.map(c => COLORS[c] || '#22c55e');
+  if (_pie) _pie.destroy();
+  _pie = new Chart(document.getElementById('an-pie'), {
+    type: 'doughnut',
+    data: {
+      labels: cats,
+      datasets: [{
+        data: counts,
+        backgroundColor: colors.map(c => c + 'cc'),
+        borderColor: colors,
+        borderWidth: 2,
+        hoverOffset: 8,
+      }]
+    },
+    options: {
+      responsive: true,
+      cutout: '65%',
+      plugins: {
+        legend: { position: 'bottom', labels: { color: '#9aac9a', padding: 18, font: { family: 'Space Grotesk', size: 12 } } },
+        tooltip: tooltipOpts(),
+      }
+    }
+  });
+}
+
+function renderTrend(d) {
+  const points = d.daily_trend || [];
+  if (_trend) _trend.destroy();
+  _trend = new Chart(document.getElementById('an-trend'), {
+    type: 'line',
+    data: {
+      labels: points.map(p => p.day.slice(5)),
+      datasets: [{
+        label: 'Items/Day',
+        data: points.map(p => p.count),
+        borderColor: '#22c55e',
+        backgroundColor: 'rgba(34,197,94,0.07)',
+        fill: true,
+        tension: 0.4,
+        pointBackgroundColor: '#22c55e',
+        pointBorderColor: '#080c08',
+        pointBorderWidth: 2,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false }, tooltip: tooltipOpts() },
+      scales: {
+        x: { ticks: { color: '#556055', font: { size: 10 } }, grid: { display: false } },
+        y: { ticks: { color: '#556055', font: { size: 11 } }, grid: { color: 'rgba(34,197,94,0.05)' }, beginAtZero: true },
+      }
+    }
+  });
+}
+
+function renderWeekly(d) {
+  const cats = d.categories || [];
+  const colors = cats.map(c => COLORS[c] || '#22c55e');
+  if (_week) _week.destroy();
+  _week = new Chart(document.getElementById('an-week'), {
+    type: 'bar',
+    data: {
+      labels: cats,
+      datasets: [{
+        data: cats.map(c => (d.weekly_counts || {})[c] || 0),
+        backgroundColor: colors.map(c => c + '55'),
+        borderColor: colors,
+        borderWidth: 2,
+        borderRadius: 8,
+        borderSkipped: false,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false }, tooltip: tooltipOpts() },
+      scales: {
+        x: { ticks: { color: '#556055' }, grid: { display: false } },
+        y: { ticks: { color: '#556055' }, grid: { color: 'rgba(34,197,94,0.05)' }, beginAtZero: true },
+      }
+    }
+  });
+}
+
+function renderCO2(d) {
+  const cats = d.categories || [];
+  const colors = cats.map(c => COLORS[c] || '#22c55e');
+  const co2vals = cats.map(c => ((d.type_data || {})[c] || {}).weight || 0);
+  if (_co2bar) _co2bar.destroy();
+  _co2bar = new Chart(document.getElementById('an-co2-bar'), {
+    type: 'bar',
+    data: {
+      labels: cats,
+      datasets: [{
+        label: 'Weight processed (kg)',
+        data: co2vals,
+        backgroundColor: colors.map(c => c + '44'),
+        borderColor: colors,
+        borderWidth: 2,
+        borderRadius: 8,
+        borderSkipped: false,
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      plugins: { legend: { display: false }, tooltip: tooltipOpts() },
+      scales: {
+        x: { ticks: { color: '#556055' }, grid: { color: 'rgba(34,197,94,0.05)' }, beginAtZero: true },
+        y: { ticks: { color: '#9aac9a', font: { size: 13 } }, grid: { display: false } },
+      }
+    }
+  });
+}
+
+function renderZones(zones) {
+  const zoneEl = document.getElementById('zone-cards');
+  zoneEl.innerHTML = zones.map(z => {
+    const s = z.score >= 80 ? 'ok' : z.score >= 60 ? 'warning' : 'critical';
+    return `<div class="card bin-card ${s}" style="padding:20px">
+      <div class="bin-head">
+        <div class="bin-id-row">
+          <div class="bin-icon-box">📍</div>
+          <div class="bin-name-col" style="display:block">
+            <div class="bin-name">${z.zone}</div>
+            <div class="bin-weight">${z.weight_kg} kg tracked</div>
+          </div>
+        </div>
+        <span class="bin-badge">${z.score >= 80 ? 'GOOD' : z.score >= 60 ? 'MEDIUM' : 'LOW'}</span>
+      </div>
+      <div class="bin-pct">${z.score}<small>%</small></div>
+      <div class="bin-bar-track"><div class="bin-bar-fill" style="width:${z.score}%"></div></div>
+      <div class="bin-time">Average fill: ${z.fill_avg}%</div>
+    </div>`;
+  }).join('');
+}
+
+function renderCollections(rows) {
+  const el = document.getElementById('collection-cards');
+  if (!el) return;
+  if (!rows.length) {
+    el.innerHTML = '<div class="empty"><span>Truck</span><p>Collection cadence will appear as live activity builds.</p></div>';
+    return;
+  }
+  el.innerHTML = rows.map(row => `
+    <div class="card bin-card" style="padding:18px">
+      <div class="bin-head">
+        <div class="bin-id-row">
+          <div class="bin-icon-box">Truck</div>
+          <div class="bin-name-col" style="display:block">
+            <div class="bin-name">${row.name}</div>
+            <div class="bin-weight">ETA ${row.eta_min} min</div>
+          </div>
+        </div>
+        <span class="bin-badge">${row.pickups_per_day} / day</span>
+      </div>
+    </div>`).join('');
+}
+
+let _forecastChart = null;
+
+async function loadPredictions() {
+  try {
+    const d = await (await fetch('/api/predict')).json();
+    renderForecastChart(d);
+    renderFillForecastCards(d.fill_forecasts || []);
+    renderTrendSignalCards(d.predictions || {}, d.categories || []);
+    const meta = document.getElementById('forecast-meta');
+    if (meta) meta.textContent = `Generated: ${d.generated_at}`;
+  } catch (e) {
+    console.error('[predictions]', e);
+  }
+}
+
+function renderForecastChart(d) {
+  const ctx = document.getElementById('an-forecast');
+  if (!ctx) return;
+
+  const cats = (d.categories || []).slice(0, 6);
+  const histDates = (d.history_dates || []).slice(-7).map(dt => dt.slice(5));
+  const fcastDates = (d.forecast_dates || []).map(dt => dt.slice(5));
+  const allLabels = [...histDates, ...fcastDates.map(dt => dt + ' ★')];
+
+  const palette = ['#22c55e','#f59e0b','#f97316','#94a3b8','#06b6d4','#ef4444','#84cc16','#a855f7'];
+
+  const datasets = cats.map((cat, idx) => {
+    const pred = (d.predictions || {})[cat] || {};
+    const hist = (pred.history || []).slice(-7);
+    const fcast = pred.forecast || [];
+    const color = palette[idx % palette.length];
+    return {
+      label: cat,
+      data: [...hist, ...fcast],
+      borderColor: color,
+      backgroundColor: color + '18',
+      borderWidth: 2,
+      fill: false,
+      tension: 0.4,
+      pointRadius: (ctx, meta) => meta.dataIndex >= hist.length ? 6 : 3,
+      pointBackgroundColor: (ctx, meta) => meta.dataIndex >= hist.length ? color : 'transparent',
+      pointBorderColor: color,
+      segment: {
+        borderDash: (ctx) => ctx.p0DataIndex >= hist.length - 1 ? [5, 4] : [],
+        borderColor: (ctx) => ctx.p0DataIndex >= hist.length - 1 ? color + '99' : color,
+      },
+    };
+  });
+
+  if (_forecastChart) _forecastChart.destroy();
+  _forecastChart = new Chart(ctx, {
+    type: 'line',
+    data: { labels: allLabels, datasets },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: true, position: 'bottom', labels: { color: '#9aac9a', padding: 16, font: { family: 'Fira Code', size: 11 } } },
+        tooltip: tooltipOpts(),
+        annotation: {},
+      },
+      scales: {
+        x: { ticks: { color: '#556055', font: { size: 10 } }, grid: { display: false } },
+        y: { ticks: { color: '#556055', font: { size: 11 } }, grid: { color: 'rgba(34,197,94,0.05)' }, beginAtZero: true, title: { display: true, text: 'Items / Day', color: '#556055', font: { size: 10 } } },
+      }
+    }
+  });
+}
+
+function renderFillForecastCards(forecasts) {
+  const el = document.getElementById('fill-forecast-cards');
+  if (!el || !forecasts.length) return;
+  el.innerHTML = forecasts.map(f => {
+    const color = f.risk === 'critical' ? '#ff4444' : f.risk === 'warning' ? '#f59e0b' : '#00ff88';
+    const label = f.risk === 'critical' ? '🚨 HIGH RISK' : f.risk === 'warning' ? '⚠️ MODERATE' : '✅ LOW RISK';
+    return `
+      <div class="card bin-card" style="border-left:3px solid ${color}">
+        <div class="bin-head">
+          <div class="bin-id-row">
+            <div class="bin-icon-box" style="color:${color}">📍</div>
+            <div class="bin-name-col">
+              <div class="bin-name">${f.name}</div>
+              <div class="bin-weight">Current: ${f.current_fill}%</div>
+            </div>
+          </div>
+          <span class="bin-badge" style="background:${color}22;color:${color};border:1px solid ${color}44">${label}</span>
+        </div>
+        <div class="bin-pct" style="color:${color}">${f.forecast_48h}<small>%</small></div>
+        <div class="bin-bar-track"><div class="bin-bar-fill" style="width:${f.forecast_48h}%;background:${color}"></div></div>
+        <div class="bin-time">Predicted fill in 48 hours</div>
+      </div>`;
+  }).join('');
+}
+
+function renderTrendSignalCards(predictions, cats) {
+  const el = document.getElementById('trend-signal-cards');
+  if (!el) return;
+  const palette = { Plastic:'#22c55e', Paper:'#f59e0b', Cardboard:'#f97316', Metal:'#94a3b8', Glass:'#06b6d4', Trash:'#ef4444', Organic:'#84cc16', 'E-Waste':'#a855f7' };
+  const icons = { Plastic:'🧴', Paper:'📄', Cardboard:'📦', Metal:'🔩', Glass:'🔮', Trash:'🗑️', Organic:'🌿', 'E-Waste':'💻' };
+  el.innerHTML = cats.map(cat => {
+    const pred = predictions[cat] || {};
+    const trend = pred.trend || 'stable';
+    const slope = pred.slope || 0;
+    const color = palette[cat] || '#00ff88';
+    const tIcon = trend === 'up' ? '↑' : trend === 'down' ? '↓' : '→';
+    const tColor = trend === 'up' ? '#ff4444' : trend === 'down' ? '#22c55e' : '#f59e0b';
+    const fcast = (pred.forecast || [0, 0, 0]);
+    return `
+      <div class="card bin-card" style="border-left:3px solid ${color}44">
+        <div class="bin-head">
+          <div class="bin-id-row">
+            <div class="bin-icon-box" style="color:${color}">${icons[cat] || '♻️'}</div>
+            <div class="bin-name-col">
+              <div class="bin-name">${cat}</div>
+              <div class="bin-weight">Next 3 days: ${fcast.join(', ')} items/day</div>
+            </div>
+          </div>
+          <span style="font-size:22px;font-weight:800;color:${tColor}">${tIcon}</span>
+        </div>
+        <div class="bin-time" style="margin-top:8px">
+          Trend: <strong style="color:${tColor}">${trend.toUpperCase()}</strong> &nbsp;·&nbsp;
+          Slope: <span style="font-family:var(--mono)">${slope} items/day</span>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  loadAnalytics();
+  loadPredictions();
+  setInterval(loadAnalytics, 30000);
+  setInterval(loadPredictions, 60000);
+});
+</script>
+{% endblock %}

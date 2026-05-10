@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% block title %}AI Classifier{% endblock %}
+
+{% block content %}
+<div class="page upload-wrap">
+  <div class="upload-hero">
+    <h1>AI Waste Upload Lab</h1>
+    <p>Upload a waste image for AI classification. Every result updates the dashboard, sensors, analytics, alerts, and smart map automatically.</p>
+    <div class="upload-meta-row">
+      <div class="upload-meta-pill">Model Status: {{ ai_status }}</div>
+      <div class="upload-meta-pill">Image route: <code>/upload-image</code></div>
+    </div>
+  </div>
+
+  <div class="upload-lab-grid">
+    <div class="card upload-card">
+      <div class="chart-title" style="margin-bottom:14px">Image Classification</div>
+      <div id="drop-zone" class="drop-zone">
+        <span class="dz-icon">IMG</span>
+        <div class="dz-title">Drop image or click to upload</div>
+        <div class="dz-sub">The backend runs real offline inference and estimates fill level from the image.</div>
+        <div class="dz-formats">JPG • PNG • WEBP</div>
+        <input type="file" id="file-input" accept="image/*" />
+      </div>
+
+      <div style="margin-top:16px">
+        <div style="font-size:11px;color:var(--text-3);margin-bottom:8px;font-family:var(--mono);letter-spacing:1px;text-transform:uppercase">Select Bin Location</div>
+        <div class="location-picker" id="location-picker">
+          <button class="loc-btn active" data-loc="B001">New Market</button>
+          <button class="loc-btn" data-loc="B002">MP Nagar</button>
+          <button class="loc-btn" data-loc="B003">Habibganj</button>
+          <button class="loc-btn" data-loc="B004">Kolar Road</button>
+          <button class="loc-btn" data-loc="B005">Bairagarh</button>
+          <button class="loc-btn" data-loc="B006">Lalghati</button>
+        </div>
+      </div>
+
+      <div id="preview-wrap" style="display:none;margin-top:20px;text-align:center">
+        <img id="preview-img" src="" alt="Preview" style="max-width:100%;max-height:300px;border-radius:12px;border:2px solid var(--border)"/>
+        <div id="preview-name" style="margin-top:10px;font-size:12px;color:var(--text-3)"></div>
+      </div>
+
+      <button class="btn btn-green" id="classify-btn" onclick="classifyWaste()" disabled style="width:100%;margin-top:20px">Analyze Image</button>
+    </div>
+
+    <div class="card" id="result-box" style="display:none">
+      <div class="res-top">
+        <div class="res-icon-box" id="res-icon">AI</div>
+        <div class="res-texts">
+          <div style="font-size:10px; color:var(--green); font-family:var(--mono); text-transform:uppercase; margin-bottom:2px" id="res-detected-obj">Object: None</div>
+          <div class="res-type" id="res-type">?</div>
+          <div id="res-recyclable" class="res-recyclable recyclable-yes">Waiting for image</div>
+          <div id="res-stream" style="font-size:12px;color:var(--text-2);margin-top:6px">Waste Stream: ?</div>
+        </div>
+      </div>
+      <div class="res-conf-row" style="display:flex;justify-content:space-between;margin-top:16px;font-size:12px">
+        <span>AI Confidence</span>
+        <span class="res-conf-val" id="res-conf-pct">--%</span>
+      </div>
+      <div class="prog-track" style="height:6px;background:var(--bg-3);border-radius:999px;margin-top:8px;overflow:hidden">
+        <div class="prog-fill" id="res-conf-fill" style="height:100%;width:0%;background:var(--green);transition:width .6s ease"></div>
+      </div>
+      <div class="res-explanation" id="res-explanation" style="margin-top:14px;font-size:13px;color:var(--text-2);line-height:1.5"></div>
+      
+      <div style="margin:16px 0;background:var(--bg-3);border:1px solid var(--border);border-radius:12px;padding:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span style="font-size:11px;color:var(--text-2);font-family:var(--mono)">Bin Fill Level</span>
+          <span style="font-family:var(--mono);font-size:18px;font-weight:700;color:var(--green)" id="res-bin-val">--%</span>
+        </div>
+        <div style="height:10px;background:rgba(255,255,255,0.06);border-radius:999px;overflow:hidden">
+          <div id="res-bin-fill-bar" style="height:100%;width:0%;border-radius:999px;background:var(--green);transition:width 1.2s cubic-bezier(.4,0,.2,1);box-shadow:0 0 10px var(--green)"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:5px;font-size:9px;font-family:var(--mono);color:var(--text-3)">
+          <span>0%</span><span id="res-bin-status-label" style="color:var(--ok)">Empty</span><span>100%</span>
+        </div>
+      </div>
+
+      <div class="res-metrics" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px">
+        <div class="res-metric"><div class="res-metric-lbl">CO2 Saved</div><div class="res-metric-val" id="res-co2">-- kg</div></div>
+        <div class="res-metric"><div class="res-metric-lbl">Bin Status</div><div class="res-metric-val" id="res-status-val">--</div></div>
+        <div class="res-metric"><div class="res-metric-lbl">Location</div><div class="res-metric-val text-sm" id="res-location">--</div></div>
+        <div class="res-metric"><div class="res-metric-lbl">Stream</div><div class="res-metric-val text-sm" id="res-stream-val">--</div></div>
+      </div>
+      <div class="res-explanation" id="res-stream-action" style="margin-top:12px;font-style:italic;font-size:12px"></div>
+      
+      <div class="res-actions" style="display:flex;gap:10px;margin-top:20px">
+        <button class="btn btn-outline btn-sm" onclick="resetUpload()" style="flex:1">Reset</button>
+        <button class="btn btn-cyan btn-sm" onclick="window.location='/dashboard'" style="flex:1">Dashboard</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.upload-wrap { max-width: 900px; margin: 0 auto; padding: 20px; }
+.upload-hero { text-align: center; margin-bottom: 40px; }
+.upload-hero h1 { font-size: 2.5rem; margin-bottom: 10px; background: linear-gradient(90deg, var(--green), #00d4ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.upload-meta-row { display: flex; justify-content: center; gap: 15px; margin-top: 15px; }
+.upload-meta-pill { background: var(--bg-3); padding: 5px 12px; border-radius: 999px; font-size: 11px; border: 1px solid var(--border); color: var(--text-2); font-family: var(--mono); }
+.upload-lab-grid { display: grid; grid-template-columns: 1.2fr 1fr; gap: 24px; align-items: start; }
+@media (max-width: 850px) { .upload-lab-grid { grid-template-columns: 1fr; } }
+
+.drop-zone { border: 2px dashed var(--border); border-radius: 16px; padding: 40px 20px; text-align: center; cursor: pointer; transition: all 0.3s ease; background: rgba(255,255,255,0.02); }
+.drop-zone:hover, .drop-zone.over { border-color: var(--green); background: rgba(0,255,136,0.05); }
+.dz-icon { display: block; font-size: 32px; margin-bottom: 10px; color: var(--text-3); }
+.dz-title { font-weight: 600; margin-bottom: 5px; color: var(--text-1); }
+.dz-sub { font-size: 12px; color: var(--text-3); margin-bottom: 15px; }
+.dz-formats { font-size: 10px; color: var(--green); font-family: var(--mono); }
+#file-input { display: none; }
+
+.location-picker { display: flex; flex-wrap: wrap; gap: 8px; }
+.loc-btn { background: var(--bg-3); border: 1px solid var(--border); color: var(--text-3); padding: 6px 12px; border-radius: 8px; font-size: 12px; cursor: pointer; transition: all 0.2s; }
+.loc-btn:hover { border-color: var(--green); color: var(--text-2); }
+.loc-btn.active { background: rgba(0,255,136,0.1); border-color: var(--green); color: var(--green); font-weight: 600; }
+
+.res-top { display: flex; gap: 16px; align-items: center; }
+.res-icon-box { width: 50px; height: 50px; background: var(--bg-3); border: 1px solid var(--border); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px; }
+.res-type { font-size: 24px; font-weight: 700; color: var(--text-1); }
+.res-recyclable { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; margin-top: 4px; }
+.recyclable-yes { background: rgba(0,255,136,0.1); color: var(--green); }
+.recyclable-no { background: rgba(255,68,68,0.1); color: #ff4444; }
+
+.res-metric { background: var(--bg-3); padding: 10px; border-radius: 10px; border: 1px solid var(--border); }
+.res-metric-lbl { font-size: 10px; color: var(--text-3); margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
+.res-metric-val { font-size: 13px; font-weight: 600; color: var(--text-2); }
+</style>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// Local initialization for upload page
+document.addEventListener('DOMContentLoaded', () => {
+  // Ensure location picker buttons update the global state
+  const locBtns = document.querySelectorAll('.loc-btn');
+  locBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      locBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      window.evSelectedLocation = btn.dataset.loc;
+    });
+  });
+  
+  // Re-run initDrop in case main.js missed it due to timing or partial load
+  if (typeof initDrop === 'function') initDrop();
+});
+</script>
+{% endblock %}

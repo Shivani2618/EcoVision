@@ -1,0 +1,370 @@
+{% extends "base.html" %}
+{% block title %}IoT Monitoring{% endblock %}
+
+{% block extra_head %}
+<style>
+  /* ── Circular progress ring ───────────────────── */
+  .ring-wrap {
+    position: relative; width: 80px; height: 80px; flex-shrink: 0;
+  }
+  .ring-svg { transform: rotate(-90deg); }
+  .ring-bg  { fill: none; stroke: rgba(255,255,255,0.06); stroke-width: 7; }
+  .ring-fill {
+    fill: none; stroke-width: 7; stroke-linecap: round;
+    transition: stroke-dashoffset 1s cubic-bezier(.4,0,.2,1);
+  }
+  .ring-val {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-family: var(--mono); font-weight: 700; font-size: 15px; line-height: 1;
+  }
+  .ring-unit { font-size: 9px; color: var(--text-3); margin-top: 1px; }
+
+  /* ── Enhanced sensor card layout ─────────────── */
+  .sensor-card-v2 {
+    padding: 16px; display: flex; align-items: center; gap: 14px;
+    border-left: 3px solid var(--sc, var(--green));
+  }
+  .sensor-card-v2.ok       { --sc: var(--ok);   }
+  .sensor-card-v2.warning  { --sc: var(--warn); animation: none; }
+  .sensor-card-v2.critical { --sc: var(--crit); animation: critPulse 2s ease infinite; }
+  .sensor-info { flex: 1; min-width: 0; }
+  .sensor-lbl-v2 { font-size: 12px; font-weight: 600; margin-bottom: 2px; }
+  .sensor-desc { font-size: 10px; color: var(--text-3); font-family: var(--mono); }
+  .sensor-thresholds {
+    display: flex; gap: 10px; margin-top: 8px; font-size: 9px;
+    font-family: var(--mono); color: var(--text-3);
+  }
+  .thresh-warn { color: var(--warn); }
+  .thresh-crit { color: var(--crit); }
+
+  /* ── Bin fill visual (cylindrical) ───────────── */
+  .bin-fill-visual {
+    display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px;
+  }
+  .bin-cyl {
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    width: 48px;
+  }
+  .bin-cyl-body {
+    width: 36px; height: 56px; position: relative;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 4px 4px 6px 6px;
+    overflow: hidden;
+  }
+  .bin-cyl-fill {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    border-radius: 0 0 5px 5px;
+    transition: height 1.2s cubic-bezier(.4,0,.2,1);
+  }
+  .bin-cyl-pct {
+    font-size: 9px; font-family: var(--mono); font-weight: 700;
+    text-align: center; line-height: 1;
+  }
+  .bin-cyl-name { font-size: 8px; color: var(--text-3); font-family: var(--mono); text-align: center; }
+
+  /* ── Location info badge ─────────────────────── */
+  .loc-info-bar {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    background: rgba(0,255,136,0.04); border: 1px solid rgba(0,255,136,0.1);
+    border-radius: 10px; padding: 10px 14px; margin-bottom: 20px;
+    font-size: 12px;
+  }
+  .loc-info-name { font-weight: 700; color: var(--green); font-size: 14px; }
+  .loc-info-zone { font-family: var(--mono); color: var(--text-3); font-size: 11px; }
+  .loc-info-gps  { font-family: var(--mono); color: var(--text-3); font-size: 10px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page">
+  <div class="ph">
+    <div class="ph-left">
+      <h1>📡 IoT Sensor Monitoring</h1>
+      <p>Live sensor data from smart bins across all city zones</p>
+    </div>
+    <div class="ph-right">
+      <select id="location-select" class="btn btn-outline btn-sm" onchange="loadSensors()" style="cursor:pointer">
+        <option value="B001">🏙️ New Market — Bhopal Central</option>
+        <option value="B002">🏘️ MP Nagar — Zone A</option>
+        <option value="B003">🛒 Habibganj — Zone B</option>
+        <option value="B004">🛣️ Kolar Road — Zone C</option>
+        <option value="B005">✈️ Bairagarh — Zone D</option>
+        <option value="B006">🏛️ Lalghati — Zone E</option>
+      </select>
+      <div class="live-chip"><div class="dot"></div> LIVE</div>
+    </div>
+  </div>
+
+  <!-- Location GPS info bar -->
+  <div class="loc-info-bar" id="loc-info-bar">
+    <span>📍</span>
+    <span class="loc-info-name" id="loc-info-name">—</span>
+    <span class="loc-info-zone" id="loc-info-zone">—</span>
+    <span class="loc-info-gps" id="loc-info-gps">—</span>
+    <span id="weather-badge" style="margin-left:12px;font-size:10px;font-family:var(--mono);padding:2px 8px;border-radius:4px;display:none"></span>
+    <span style="margin-left:auto;font-size:10px;color:var(--text-3);font-family:var(--mono)" id="sensor-time">--:--:--</span>
+  </div>
+
+  <!-- Sensor cards -->
+  <div class="sec-hdr">
+    <div class="sec-title">Sensor Readings</div>
+    <span class="text-xs text-muted text-mono">auto-refresh 3s</span>
+  </div>
+  <div class="sensors-grid" id="sensors-grid">
+    <!-- Filled by JS -->
+  </div>
+
+  <!-- Bin fill visual -->
+  <div class="sec-hdr">
+    <div class="sec-title">🗑️ Bin Fill Levels at This Location</div>
+  </div>
+  <div class="card chart-card" style="padding:20px">
+    <div class="bin-fill-visual" id="bin-fill-visual"></div>
+  </div>
+
+  <!-- Sensor alert strip -->
+  <div id="sensor-alert-strip"></div>
+
+  <!-- All locations overview -->
+  <div class="sec-hdr" style="margin-top:8px">
+    <div class="sec-title">All Location Overview</div>
+    <span class="text-xs text-muted text-mono">auto-refresh 3s</span>
+  </div>
+  <div class="charts-grid">
+    <div class="card chart-card" style="grid-column:1/-1">
+      <div class="chart-hdr">
+        <div class="chart-title">Fill Levels — All Locations (Bhopal)</div>
+        <span class="text-xs text-muted text-mono">live sensor data</span>
+      </div>
+      <canvas id="fill-bar-chart" height="140"></canvas>
+    </div>
+    <div class="card chart-card">
+      <div class="chart-hdr">
+        <div class="chart-title">Gas Level History (current location)</div>
+      </div>
+      <canvas id="gas-line-chart" height="180"></canvas>
+    </div>
+    <div class="card chart-card">
+      <div class="chart-hdr">
+        <div class="chart-title">Temperature History</div>
+      </div>
+      <canvas id="temp-line-chart" height="180"></canvas>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+let gasHistory = [], tempHistory = [], timeLabels = [];
+let fillBarChart = null, gasChart = null, tempChart = null;
+let sensorInterval = null;
+
+const SENSOR_DEFS = [
+  { key:'fill_level',  label:'Fill Level',  icon:'🗑️', unit:'%',  warn:70, crit:85, maxVal:100, desc:'Bin capacity used' },
+  { key:'gas_level',   label:'Gas / Odor',  icon:'💨', unit:'%',  warn:60, crit:80, maxVal:100, desc:'Odor & decomp. gas' },
+  { key:'temperature', label:'Temperature', icon:'🌡️', unit:'°C', warn:38, crit:50, maxVal:65,  desc:'Internal bin temp' },
+  { key:'moisture',    label:'Moisture',    icon:'💧', unit:'%',  warn:65, crit:80, maxVal:100, desc:'Wet waste indicator' },
+  { key:'vibration',   label:'Vibration',   icon:'📳', unit:'',   warn:20, crit:35, maxVal:50,  desc:'Tampering / motion' },
+];
+
+const BIN_TYPE_COLORS = {
+  Plastic:'#00ff88', Paper:'#f59e0b', Cardboard:'#f97316',
+  Metal:'#94a3b8', Glass:'#06b6d4', Trash:'#ef4444',
+  Organic:'#84cc16', 'E-Waste':'#a855f7'
+};
+
+const LOC_INFO = {
+  B001:{ name:'New Market', zone:'Bhopal Central', lat:'23.2599°N', lng:'77.4126°E' },
+  B002:{ name:'MP Nagar',   zone:'Zone A',         lat:'23.2330°N', lng:'77.4343°E' },
+  B003:{ name:'Habibganj',  zone:'Zone B',         lat:'23.2296°N', lng:'77.4407°E' },
+  B004:{ name:'Kolar Road', zone:'Zone C',         lat:'23.1793°N', lng:'77.4538°E' },
+  B005:{ name:'Bairagarh',  zone:'Zone D',         lat:'23.2870°N', lng:'77.3370°E' },
+  B006:{ name:'Lalghati',   zone:'Zone E',         lat:'23.2739°N', lng:'77.3645°E' },
+};
+
+function statusClass(val, warn, crit) {
+  if (val >= crit) return 'critical';
+  if (val >= warn) return 'warning';
+  return 'ok';
+}
+
+function statusColor(st) {
+  return st === 'critical' ? 'var(--crit)' : st === 'warning' ? 'var(--warn)' : 'var(--ok)';
+}
+
+function ringHTML(val, maxVal, color, icon, unit) {
+  const r = 30, circ = 2 * Math.PI * r;
+  const pct = Math.min(1, val / maxVal);
+  const offset = circ * (1 - pct);
+  return `
+    <div class="ring-wrap">
+      <svg class="ring-svg" width="80" height="80" viewBox="0 0 80 80">
+        <circle class="ring-bg" cx="40" cy="40" r="${r}"/>
+        <circle class="ring-fill" cx="40" cy="40" r="${r}"
+          stroke="${color}"
+          stroke-dasharray="${circ}"
+          stroke-dashoffset="${offset}"
+          style="filter:drop-shadow(0 0 4px ${color})"/>
+      </svg>
+      <div class="ring-val" style="color:${color}">
+        <span>${icon}</span>
+        <span style="font-size:13px">${val}${unit ? `<span class="ring-unit">${unit}</span>` : ''}</span>
+      </div>
+    </div>`;
+}
+
+async function loadSensors() {
+  const loc = document.getElementById('location-select').value;
+  const data = await (await fetch(`/api/sensors?location_id=${loc}`)).json();
+  renderLocationInfo(loc, data);
+  renderSensors(data);
+  updateHistories(data);
+  updateCharts();
+  loadAllLocationsFill();
+  loadBinFillVisual(loc);
+}
+
+function renderLocationInfo(locId, d) {
+  const info = LOC_INFO[locId] || {};
+  const el = n => document.getElementById(n);
+  if (el('loc-info-name')) el('loc-info-name').textContent = info.name || locId;
+  if (el('loc-info-zone')) el('loc-info-zone').textContent = info.zone || '';
+  if (el('loc-info-gps'))  el('loc-info-gps').textContent  = `GPS: ${info.lat}, ${info.lng}`;
+  if (el('sensor-time'))   el('sensor-time').textContent   = d.timestamp;
+
+  // Show real-weather badge
+  const badge = el('weather-badge');
+  if (badge && d.ambient_temp !== undefined) {
+    const isLive = d.weather_source === 'live';
+    badge.style.display = 'inline';
+    badge.style.background = isLive ? 'rgba(0,255,136,0.12)' : 'rgba(245,158,11,0.12)';
+    badge.style.color = isLive ? '#00ff88' : '#f59e0b';
+    badge.style.border = `1px solid ${isLive ? 'rgba(0,255,136,0.3)' : 'rgba(245,158,11,0.3)'}`;
+    badge.textContent = `🌤 Bhopal ${d.ambient_temp}°C · ${d.ambient_humidity}% RH · ${isLive ? '🟢 Live' : '🟡 Cached'}`;
+  }
+}
+
+function renderSensors(d) {
+  const grid = document.getElementById('sensors-grid');
+  grid.innerHTML = SENSOR_DEFS.map(s => {
+    const val = d[s.key] ?? 0;
+    const st  = statusClass(val, s.warn, s.crit);
+    const color = st === 'critical' ? '#ff4444' : st === 'warning' ? '#f59e0b' : '#00ff88';
+    const pct = Math.min(100, (val / s.maxVal) * 100);
+    return `
+    <div class="card sensor-card ${st}" style="padding:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div>
+          <div style="font-size:20px;margin-bottom:4px">${s.icon}</div>
+          <div style="font-size:12px;font-weight:600">${s.label}</div>
+          <div style="font-size:9px;color:var(--text-3);font-family:var(--mono)">${s.desc}</div>
+        </div>
+        ${ringHTML(val, s.maxVal, color, '', s.unit)}
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:9px;font-family:var(--mono);color:var(--text-3);margin-bottom:4px">
+        <span>⚠️ warn: ${s.warn}${s.unit}</span>
+        <span>🚨 crit: ${s.crit}${s.unit}</span>
+      </div>
+      <div class="sensor-bar-wrap">
+        <div class="sensor-bar" style="width:${pct}%;background:${color}"></div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Sensor alerts
+  const alertStrip = document.getElementById('sensor-alert-strip');
+  const warns = SENSOR_DEFS.filter(s => statusClass(d[s.key]??0, s.warn, s.crit) !== 'ok');
+  alertStrip.innerHTML = warns.map(s => {
+    const val = d[s.key] ?? 0;
+    const st = statusClass(val, s.warn, s.crit);
+    return `
+      <div class="al-item al-${st}">
+        ${st === 'critical' ? '🚨' : '⚠️'}
+        <strong>${s.icon} ${s.label}</strong> at <strong>${val}${s.unit}</strong>
+        — ${st === 'critical' ? 'Critical threshold exceeded!' : 'Approaching warning threshold'}
+      </div>`;
+  }).join('');
+}
+
+async function loadBinFillVisual(locId) {
+  try {
+    const res = await fetch('/api/map').then(r => r.json());
+    const loc = res.find(l => l.id === locId);
+    if (!loc) return;
+    const bins = loc.bins || [];
+    const container = document.getElementById('bin-fill-visual');
+    if (!container) return;
+    container.innerHTML = bins.map(b => {
+      const color = BIN_TYPE_COLORS[b.bin_type] || '#00ff88';
+      const pct = Math.round(b.level);
+      const status = pct >= 80 ? 'critical' : pct >= 70 ? 'warning' : 'ok';
+      const sc = status === 'critical' ? '#ff4444' : status === 'warning' ? '#f59e0b' : color;
+      return `
+        <div class="bin-cyl" title="${b.bin_type}: ${pct}%">
+          <div class="bin-cyl-body">
+            <div class="bin-cyl-fill" style="height:${pct}%;background:${sc}44;border-top:2px solid ${sc}"></div>
+          </div>
+          <div class="bin-cyl-pct" style="color:${sc}">${pct}%</div>
+          <div class="bin-cyl-name">${b.bin_type}</div>
+        </div>`;
+    }).join('');
+  } catch(e) {}
+}
+
+function updateHistories(d) {
+  const now = new Date().toLocaleTimeString('en',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  timeLabels.push(now); gasHistory.push(d.gas_level); tempHistory.push(d.temperature);
+  if (timeLabels.length > 20) { timeLabels.shift(); gasHistory.shift(); tempHistory.shift(); }
+}
+
+function updateCharts() {
+  const cOpts = (color) => ({
+    borderColor: color, backgroundColor: color.replace(')',',0.06)').replace('rgb','rgba'),
+    fill: true, tension: 0.4, pointRadius: 2, pointHoverRadius: 5, borderWidth: 2,
+  });
+  const scaleOpts = {
+    x:{ ticks:{color:'#3a5a3a',font:{family:'Fira Code',size:10}}, grid:{display:false} },
+    y:{ ticks:{color:'#3a5a3a',font:{family:'Fira Code',size:10}}, grid:{color:'rgba(0,255,136,0.04)'}, beginAtZero:true }
+  };
+  const pluginOpts = { legend:{display:false}, tooltip:{backgroundColor:'#0a140a',titleColor:'#e2ffe2',bodyColor:'#7aaa7a',borderColor:'rgba(0,255,136,0.15)',borderWidth:1,padding:10,cornerRadius:8}};
+
+  if (gasChart) gasChart.destroy();
+  gasChart = new Chart(document.getElementById('gas-line-chart'), {
+    type:'line', data:{ labels:timeLabels, datasets:[{label:'Gas %', data:gasHistory, ...cOpts('rgb(245,158,11)')}]},
+    options:{ responsive:true, plugins:pluginOpts, scales:scaleOpts }
+  });
+
+  if (tempChart) tempChart.destroy();
+  tempChart = new Chart(document.getElementById('temp-line-chart'), {
+    type:'line', data:{ labels:timeLabels, datasets:[{label:'Temp °C', data:tempHistory, ...cOpts('rgb(255,68,68)')}]},
+    options:{ responsive:true, plugins:pluginOpts, scales:scaleOpts }
+  });
+}
+
+async function loadAllLocationsFill() {
+  const data = await (await fetch('/api/sensors/all')).json();
+  const labels = ['New Market','MP Nagar','Habibganj','Kolar Road','Bairagarh','Lalghati'];
+  const values = data.map(d => d.fill_level);
+  const colors = data.map(d => d.fill_status === 'critical' ? '#ff4444' : d.fill_status === 'warning' ? '#f59e0b' : '#00ff88');
+
+  if (fillBarChart) fillBarChart.destroy();
+  fillBarChart = new Chart(document.getElementById('fill-bar-chart'), {
+    type:'bar',
+    data:{ labels, datasets:[{ label:'Fill %', data:values, backgroundColor:colors.map(c=>c+'44'), borderColor:colors, borderWidth:2, borderRadius:8, borderSkipped:false }]},
+    options:{
+      responsive:true,
+      plugins:{ legend:{display:false}, tooltip:{backgroundColor:'#0a140a',titleColor:'#e2ffe2',bodyColor:'#7aaa7a',borderColor:'rgba(0,255,136,0.15)',borderWidth:1,padding:10,cornerRadius:8}},
+      scales:{ x:{ticks:{color:'#3a5a3a',font:{family:'Fira Code',size:11}},grid:{display:false}}, y:{ticks:{color:'#3a5a3a',font:{family:'Fira Code',size:11}},grid:{color:'rgba(0,255,136,0.04)'},beginAtZero:true,max:100}},
+    }
+  });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  loadSensors();
+  sensorInterval = setInterval(loadSensors, 3000);
+});
+</script>
+{% endblock %}

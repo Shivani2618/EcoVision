@@ -1,0 +1,349 @@
+{% extends "base.html" %}
+{% block title %}Command Center{% endblock %}
+
+{% block content %}
+<div class="page command-center-page">
+  <div class="ph command-hero">
+    <div class="ph-left">
+      <h1>Command Center</h1>
+      <p>End-to-end smart waste intelligence: uploads, AI analysis, IoT behavior, alerts, and live city routing in one view.</p>
+    </div>
+    <div class="hero-status-wrap">
+      <div class="status-tower" id="system-status-card">
+        <span class="status-dot" id="system-status-dot"></span>
+        <div>
+          <div class="status-label">System Status</div>
+          <div class="status-value" id="system-status-text">Connecting...</div>
+        </div>
+      </div>
+      <div class="time-display" id="dashboard-clock">--:--:--</div>
+    </div>
+  </div>
+
+  <div class="stats-row compact-stats">
+    <div class="card stat-card"><div class="stat-val" id="stat-total">0</div><div class="stat-lbl">Classifications</div></div>
+    <div class="card stat-card"><div class="stat-val red" id="stat-critical">0</div><div class="stat-lbl">Critical Alerts</div></div>
+    <div class="card stat-card"><div class="stat-val cyan" id="stat-conf">0%</div><div class="stat-lbl">Average Confidence</div></div>
+    <div class="card stat-card"><div class="stat-val purple" id="stat-weight">0 kg</div><div class="stat-lbl">Tracked Waste</div></div>
+    <div class="card stat-card"><div class="stat-val" id="stat-recycle">0%</div><div class="stat-lbl">Recycling Rate</div></div>
+  </div>
+
+  <div class="command-grid top-grid">
+    <section class="card command-card">
+      <div class="section-head">
+        <div>
+          <div class="section-title">AI Classification Status</div>
+          <div class="section-sub" id="feed-source-name">YOLOv8 · Active</div>
+        </div>
+        <div class="live-chip"><div class="dot pulse-dot"></div>LIVE</div>
+      </div>
+      <div style="padding:20px;display:flex;flex-direction:column;gap:16px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div style="padding:14px;background:var(--bg-3);border-radius:12px;border:1px solid var(--border)">
+            <div style="font-size:10px;color:var(--text-3);margin-bottom:6px;letter-spacing:1px">MODEL</div>
+            <div style="font-size:14px;font-weight:700;color:var(--green)" id="feed-source-type">YOLOv8n-cls</div>
+          </div>
+          <div style="padding:14px;background:var(--bg-3);border-radius:12px;border:1px solid var(--border)">
+            <div style="font-size:10px;color:var(--text-3);margin-bottom:6px;letter-spacing:1px">LAST UPDATE</div>
+            <div style="font-size:14px;font-weight:700;color:var(--green)" id="feed-updated-at">--</div>
+          </div>
+          <div style="padding:14px;background:var(--bg-3);border-radius:12px;border:1px solid var(--border)">
+            <div style="font-size:10px;color:var(--text-3);margin-bottom:6px;letter-spacing:1px">CLASSIFICATIONS</div>
+            <div style="font-size:14px;font-weight:700;color:var(--cyan)" id="total-classifications">0</div>
+          </div>
+          <div style="padding:14px;background:var(--bg-3);border-radius:12px;border:1px solid var(--border)">
+            <div style="font-size:10px;color:var(--text-3);margin-bottom:6px;letter-spacing:1px">FILL LEVEL</div>
+            <div style="font-size:14px;font-weight:700;color:var(--green)" id="ai-fill-level">--%</div>
+          </div>
+        </div>
+        <a href="/upload" class="btn btn-green" style="text-align:center;text-decoration:none">📷 Classify Waste Image</a>
+      </div>
+    </section>
+
+    <section class="card command-card insight-card">
+      <div class="section-head">
+        <div>
+          <div class="section-title">AI Classifier Snapshot</div>
+          <div class="section-sub">Latest uploaded image classification summary</div>
+        </div>
+        <a href="/upload" class="btn btn-outline btn-sm">Open Upload Lab</a>
+      </div>
+      <div class="latest-detection" id="latest-detection-box">
+        <div class="empty"><span>AI</span><p>Upload an image to populate the command center.</p></div>
+      </div>
+
+    </section>
+  </div>
+
+  <div class="command-grid mid-grid">
+    <section class="card command-card map-card">
+      <div class="section-head">
+        <div>
+          <div class="section-title">Smart City Map</div>
+          <div class="section-sub">Dynamic bin markers, route animation, and area-level health</div>
+        </div>
+      </div>
+      <iframe class="map-frame" src="/smart-map"></iframe>
+    </section>
+
+    <section class="card command-card alerts-card">
+      <div class="section-head">
+        <div>
+          <div class="section-title">Alert Stream</div>
+          <div class="section-sub">Fill, sensor, and hazardous waste escalations</div>
+        </div>
+        <a href="/alerts" class="btn btn-outline btn-sm">History</a>
+      </div>
+      <div class="alert-stack" id="dashboard-alerts-list"></div>
+    </section>
+  </div>
+
+  <div class="command-grid bottom-grid">
+    <section class="card command-card sensor-card-panel">
+      <div class="section-head">
+        <div>
+          <div class="section-title">IoT Monitoring</div>
+          <div class="section-sub">Real-time simulation driven by live bin state</div>
+        </div>
+        <a href="/monitoring" class="btn btn-outline btn-sm">Full Sensors</a>
+      </div>
+      <div class="sensor-mini-grid" id="sensor-mini-grid"></div>
+    </section>
+
+    <section class="card command-card analytics-card-panel">
+      <div class="section-head">
+        <div>
+          <div class="section-title">Analytics</div>
+          <div class="section-sub">Waste distribution, fill trend, and collection cadence</div>
+        </div>
+        <a href="/analytics" class="btn btn-outline btn-sm">Deep Dive</a>
+      </div>
+      <div class="chart-wrap"><canvas id="dashboard-donut"></canvas></div>
+      <div class="chart-wrap small"><canvas id="dashboard-line"></canvas></div>
+    </section>
+  </div>
+</div>
+
+<style>
+.command-center-page { display:flex; flex-direction:column; gap:20px; }
+.hero-status-wrap { display:flex; align-items:center; gap:14px; }
+.status-tower { display:flex; align-items:center; gap:10px; padding:12px 16px; border-radius:14px; border:1px solid var(--border-2); background:linear-gradient(135deg, rgba(0,255,136,0.08), rgba(0,212,255,0.05)); }
+.status-dot { width:12px; height:12px; border-radius:50%; background:var(--ok); box-shadow:0 0 12px var(--ok); }
+.status-dot.warning { background:var(--warn); box-shadow:0 0 12px var(--warn); }
+.status-dot.critical { background:var(--crit); box-shadow:0 0 12px var(--crit); }
+.status-label { font-size:11px; color:var(--text-3); font-family:var(--mono); text-transform:uppercase; letter-spacing:1px; }
+.status-value { font-size:15px; font-weight:700; }
+.command-grid { display:grid; gap:20px; }
+.top-grid { grid-template-columns:1.35fr .95fr; }
+.mid-grid { grid-template-columns:1.2fr .8fr; }
+.bottom-grid { grid-template-columns:1fr 1fr; }
+.command-card { padding:18px; border-radius:18px; }
+.section-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:14px; }
+.section-title { font-size:18px; font-weight:700; color:var(--green); }
+.section-sub { font-size:12px; color:var(--text-2); }
+.feed-frame { height:320px; border-radius:16px; overflow:hidden; border:1px solid var(--border); background:#040904; }
+.feed-frame img { width:100%; height:100%; object-fit:cover; display:block; }
+.feed-meta-row { display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; margin-top:12px; }
+.feed-meta-box { padding:12px; border-radius:12px; background:rgba(255,255,255,0.03); border:1px solid var(--border); }
+.feed-meta-label { display:block; font-size:10px; color:var(--text-3); font-family:var(--mono); text-transform:uppercase; margin-bottom:4px; }
+.latest-detection { min-height:188px; }
+.latest-card { display:grid; grid-template-columns:92px 1fr; gap:14px; align-items:start; }
+.latest-preview { width:92px; height:92px; object-fit:cover; border-radius:14px; border:1px solid var(--border); background:var(--bg-3); }
+.latest-type { font-size:24px; font-weight:800; color:var(--text); margin-bottom:4px; }
+.latest-meta { display:flex; flex-wrap:wrap; gap:8px; margin:10px 0; }
+.meta-pill { padding:6px 10px; border-radius:999px; font-size:11px; background:rgba(0,255,136,0.08); border:1px solid rgba(0,255,136,0.12); color:var(--text-2); }
+.timeline-strip { display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; margin-top:12px; }
+.frame-tile { border-radius:14px; overflow:hidden; background:rgba(255,255,255,0.03); border:1px solid var(--border); }
+.frame-tile img { width:100%; height:86px; object-fit:cover; display:block; }
+.frame-caption { padding:8px; font-size:11px; color:var(--text-2); }
+.map-frame { width:100%; height:360px; border:none; border-radius:16px; background:var(--bg-3); }
+.alert-stack { display:flex; flex-direction:column; gap:10px; max-height:420px; overflow:auto; }
+.alert-card-mini { padding:14px; border-radius:14px; border:1px solid var(--border); background:rgba(255,255,255,0.03); }
+.alert-card-mini.warning { border-color:rgba(245,158,11,0.3); background:rgba(245,158,11,0.08); }
+.alert-card-mini.critical { border-color:rgba(255,68,68,0.35); background:rgba(255,68,68,0.08); }
+.alert-title-row { display:flex; justify-content:space-between; gap:8px; margin-bottom:6px; }
+.sensor-mini-grid { display:grid; grid-template-columns:repeat(2, 1fr); gap:12px; }
+.sensor-mini { padding:14px; border-radius:14px; border:1px solid var(--border); background:rgba(255,255,255,0.03); }
+.sensor-mini strong { display:block; font-size:23px; margin:4px 0 2px; }
+.location-chip-list { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+.location-chip { padding:6px 10px; border-radius:999px; font-size:11px; border:1px solid var(--border); }
+.location-chip.ok { color:var(--green); }
+.location-chip.warning { color:var(--warn); }
+.location-chip.critical { color:var(--crit); }
+.chart-wrap { height:240px; }
+.chart-wrap.small { height:180px; margin-top:14px; }
+@media (max-width: 1100px) {
+  .top-grid, .mid-grid, .bottom-grid { grid-template-columns:1fr; }
+}
+@media (max-width: 700px) {
+  .feed-meta-row, .sensor-mini-grid, .timeline-strip { grid-template-columns:1fr; }
+  .latest-card { grid-template-columns:1fr; }
+  .latest-preview { width:100%; height:180px; }
+}
+</style>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+let dashDonut = null;
+let dashLine = null;
+let dashboardAudioCtx = null;
+let lastCriticalCount = 0;
+
+function tickDashboardClock() {
+  const el = document.getElementById('dashboard-clock');
+  if (el) el.textContent = new Date().toLocaleTimeString();
+}
+
+function ensureAudioCtx() {
+  if (!dashboardAudioCtx) dashboardAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return dashboardAudioCtx;
+}
+
+function playAlertTone() {
+  try {
+    const ctx = ensureAudioCtx();
+    if (ctx.state === 'suspended') ctx.resume();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.value = 920;
+    gain.gain.setValueAtTime(0.1, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.28);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.28);
+  } catch (_) {}
+}
+
+function setStatus(status) {
+  const dot = document.getElementById('system-status-dot');
+  const text = document.getElementById('system-status-text');
+  if (!dot || !text) return;
+  dot.className = 'status-dot';
+  if (status.state === 'warning') dot.classList.add('warning');
+  if (status.state === 'critical') dot.classList.add('critical');
+  text.textContent = `${status.label} • ${status.message}`;
+}
+
+function renderLatestDetection(media) {
+  const box = document.getElementById('latest-detection-box');
+  const latestImage = media.latest_image;
+  const sourcePreview = latestImage?.annotated_url || latestImage?.image_url || '';
+  const title = latestImage?.waste_type || 'No upload yet';
+  const confidence = latestImage?.confidence || 0;
+  const fillLevel = latestImage?.bin_level || 0;
+  const location = latestImage?.location_name || 'Waiting for upload';
+  const explanation = latestImage?.explanation || "No image classified yet.";
+  box.innerHTML = `
+    <div class="latest-card">
+      <img class="latest-preview" src="${sourcePreview || ''}" alt="Latest detection" ${sourcePreview ? '' : 'style="display:none"'}>
+      <div>
+        <div class="latest-type">${title}</div>
+        <div style="color:var(--text-2);font-size:13px">${explanation || 'Upload pending.'}</div>
+        <div class="latest-meta">
+          <span class="meta-pill">Confidence ${confidence}%</span>
+          <span class="meta-pill">Bin level ${fillLevel}%</span>
+          <span class="meta-pill">Location ${location}</span>
+          <span class="meta-pill">Stream ${(latestImage?.waste_stream || '?')}</span>
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderAlerts(alerts) {
+  const list = document.getElementById('dashboard-alerts-list');
+  if (!alerts.length) {
+    list.innerHTML = '<div class="empty"><span>OK</span><p>No active alerts.</p></div>';
+    return;
+  }
+  list.innerHTML = alerts.slice(0, 8).map(alert => `
+    <div class="alert-card-mini ${alert.status}">
+      <div class="alert-title-row">
+        <strong>${alert.location_name}</strong>
+        <span>${alert.timestamp || ''}</span>
+      </div>
+      <div style="font-size:13px">${alert.message}</div>
+      <div style="font-size:11px;color:var(--text-2);margin-top:6px">Type: ${alert.type} • Fill ${alert.fill_level || 0}%</div>
+    </div>`).join('');
+}
+
+function renderSensors(sensors) {
+  const grid = document.getElementById('sensor-mini-grid');
+  if (!sensors.length) return;
+  grid.innerHTML = sensors.slice(0, 4).map(sensor => `
+    <div class="sensor-mini">
+      <div style="font-size:12px;color:var(--text-2)">${sensor.location_name}</div>
+      <strong>${sensor.fill_level}%</strong>
+      <div style="font-size:12px">Gas ${sensor.gas_level}% &bull; Temp ${sensor.temperature}&deg;C</div>
+      <div class="location-chip-list">
+        <span class="location-chip ${sensor.fill_status}">${sensor.fill_status}</span>
+        <span class="location-chip ${sensor.gas_status}">${sensor.gas_status} gas</span>
+      </div>
+    </div>`).join('');
+}
+
+function renderFeedMeta(media) {
+  const img = media.latest_image || {};
+  document.getElementById('feed-source-name').textContent = 'YOLOv8 · Active';
+  document.getElementById('feed-source-type').textContent = 'YOLOv8n-cls';
+  document.getElementById('total-classifications').textContent = media.total_classifications || 0;
+  document.getElementById('feed-updated-at').textContent = img.timestamp || '--';
+}
+
+function renderStats(dashboard, analytics) {
+  document.getElementById('stat-total').textContent = dashboard.total || 0;
+  document.getElementById('stat-critical').textContent = dashboard.critical_count || 0;
+  document.getElementById('stat-conf').textContent = `${dashboard.avg_conf || 0}%`;
+  document.getElementById('stat-weight').textContent = `${dashboard.total_weight || 0} kg`;
+  document.getElementById('stat-recycle').textContent = `${dashboard.recycle_pct || 0}%`;
+  const criticalNow = dashboard.critical_count || 0;
+  if (criticalNow > lastCriticalCount) playAlertTone();
+  lastCriticalCount = criticalNow;
+}
+
+function renderCharts(analytics) {
+  const categories = analytics.categories || [];
+  const counts = categories.map(cat => (analytics.type_counts || {})[cat] || 0);
+  const colors = ['#22c55e','#38bdf8','#94a3b8','#f59e0b','#f97316','#06b6d4','#ef4444','#a855f7'];
+  const donutCtx = document.getElementById('dashboard-donut');
+  if (dashDonut) dashDonut.destroy();
+  dashDonut = new Chart(donutCtx, {
+    type: 'doughnut',
+    data: { labels: categories, datasets: [{ data: counts, backgroundColor: colors.slice(0, categories.length).map(c => c + 'bb'), borderColor: colors.slice(0, categories.length), borderWidth: 2 }] },
+    options: { responsive: true, cutout: '62%', plugins: { legend: { position: 'bottom', labels: { color: '#9aac9a' } } } }
+  });
+  const trendPoints = analytics.daily_trend || [];
+  const lineCtx = document.getElementById('dashboard-line');
+  if (dashLine) dashLine.destroy();
+  dashLine = new Chart(lineCtx, {
+    type: 'line',
+    data: { labels: trendPoints.slice(-10).map(point => point.day.slice(5)), datasets: [{ label: 'Collections', data: trendPoints.slice(-10).map(point => point.count), borderColor: '#00ff88', backgroundColor: 'rgba(0,255,136,0.08)', fill: true, tension: 0.35 }] },
+    options: { responsive: true, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#7aaa7a' }, grid: { display: false } }, y: { ticks: { color: '#7aaa7a' }, grid: { color: 'rgba(0,255,136,0.05)' }, beginAtZero: true } } }
+  });
+}
+
+async function loadCommandCenter() {
+  try {
+    const payload = await (await fetch('/get-data')).json();
+    setStatus(payload.system_status || { label: 'Active', state: 'ok', message: 'Online' });
+    renderStats(payload.dashboard, payload.analytics);
+    renderFeedMeta(payload.media);
+    renderLatestDetection(payload.media);
+    renderAlerts(payload.alerts || []);
+    renderSensors(payload.sensors || []);
+    renderCharts(payload.analytics || {});
+  } catch (error) {
+    console.error('[command-center]', error);
+  }
+}
+
+tickDashboardClock();
+setInterval(tickDashboardClock, 1000);
+loadCommandCenter();
+setInterval(loadCommandCenter, 5000);
+
+window.addEventListener('click', () => { try { ensureAudioCtx().resume(); } catch (_) {} }, { once: true });
+</script>
+{% endblock %}

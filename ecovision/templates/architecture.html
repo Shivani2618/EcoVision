@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}Architecture{% endblock %}
+
+{% block content %}
+<div class="page">
+  <div class="ph">
+    <div class="ph-left">
+      <h1>🏗️ Smart Waste System Architecture</h1>
+      <p>Hackathon-ready blueprint for an AI and IoT based smart waste management platform.</p>
+    </div>
+    <div class="ph-right">
+      <div class="live-chip"><span class="dot-pulse"></span>PROTOTYPE READY</div>
+    </div>
+  </div>
+
+  <div class="stats-row">
+    <div class="card stat-card">
+      <div class="stat-val">IoT</div>
+      <div class="stat-lbl">Sensor-enabled smart bins with fill, gas, moisture, vibration, and temperature telemetry</div>
+    </div>
+    <div class="card stat-card">
+      <div class="stat-val">AI</div>
+      <div class="stat-lbl">Waste image classification, stream detection, and municipal decision support</div>
+    </div>
+    <div class="card stat-card">
+      <div class="stat-val">Ops</div>
+      <div class="stat-lbl">Route prioritization, overflow alerts, dashboards, and exportable records</div>
+    </div>
+  </div>
+
+  <div class="charts-grid" style="margin-bottom:24px">
+    <div class="card chart-card">
+      <div class="chart-title">1. Smart Bin Layer</div>
+      <p style="color:var(--text-2);line-height:1.7">
+        Each smart bin can publish fill level, gas concentration, moisture, vibration, and temperature data.
+        A camera or citizen upload can classify waste into recyclable, biodegradable, hazardous, or residual streams.
+      </p>
+    </div>
+    <div class="card chart-card">
+      <div class="chart-title">2. Data & Communication Layer</div>
+      <p style="color:var(--text-2);line-height:1.7">
+        Sensor packets are ingested through wireless links such as Wi-Fi, GSM, or LoRa. The backend stores
+        live readings, waste events, historical activity, and bin states for real-time dashboards and planning.
+      </p>
+    </div>
+  </div>
+
+  <div class="charts-grid" style="margin-bottom:24px">
+    <div class="card chart-card">
+      <div class="chart-title">3. AI & Analytics Layer</div>
+      <ul style="margin:0;padding-left:18px;color:var(--text-2);line-height:1.8">
+        <li>Computer vision for waste-type and waste-stream detection</li>
+        <li>Predictive trend analysis of waste generation and bin utilization</li>
+        <li>Priority scoring and route optimization for collection fleets</li>
+        <li>Anomaly and overflow alert generation for authorities</li>
+      </ul>
+    </div>
+    <div class="card chart-card">
+      <div class="chart-title">4. Operations & User Interface</div>
+      <ul style="margin:0;padding-left:18px;color:var(--text-2);line-height:1.8">
+        <li>Command center dashboard for municipal staff</li>
+        <li>IoT monitoring view for distributed bins</li>
+        <li>Alert center for critical events and irregularities</li>
+        <li>Analytics and environmental impact reporting</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card chart-card" style="margin-bottom:24px">
+    <div class="chart-title">Prototype Use Case Flow</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-top:16px">
+      <div style="padding:14px;border:1px solid var(--border);border-radius:12px;background:var(--bg-3)">
+        <strong>1. Detect</strong>
+        <p style="margin:8px 0 0;color:var(--text-2)">Bin sensors and AI image uploads capture real-time waste data.</p>
+      </div>
+      <div style="padding:14px;border:1px solid var(--border);border-radius:12px;background:var(--bg-3)">
+        <strong>2. Classify</strong>
+        <p style="margin:8px 0 0;color:var(--text-2)">Waste is categorized into recyclable, biodegradable, hazardous, or residual streams.</p>
+      </div>
+      <div style="padding:14px;border:1px solid var(--border);border-radius:12px;background:var(--bg-3)">
+        <strong>3. Prioritize</strong>
+        <p style="margin:8px 0 0;color:var(--text-2)">Critical bins are scored by urgency, weight, and operational risk.</p>
+      </div>
+      <div style="padding:14px;border:1px solid var(--border);border-radius:12px;background:var(--bg-3)">
+        <strong>4. Optimize</strong>
+        <p style="margin:8px 0 0;color:var(--text-2)">Collection recommendations and route plans are generated for municipal teams.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="charts-grid">
+    <div class="card chart-card">
+      <div class="chart-title">Scalability Plan</div>
+      <p style="color:var(--text-2);line-height:1.7">
+        The system is designed for city-wide deployment with distributed smart bins, stateless APIs,
+        modular AI services, and database-backed dashboards. Additional zones, vehicles, and waste
+        streams can be added without changing the user workflow.
+      </p>
+    </div>
+    <div class="card chart-card">
+      <div class="chart-title">Expected Deliverables Covered</div>
+      <ul style="margin:0;padding-left:18px;color:var(--text-2);line-height:1.8">
+        <li>Functional prototype / MVP</li>
+        <li>System architecture and design view</li>
+        <li>AI waste analytics and monitoring demo</li>
+        <li>Collection optimization and alerts</li>
+        <li>Scalability and smart-city deployment narrative</li>
+      </ul>
+    </div>
+  </div>
+</div>
+{% endblock %}

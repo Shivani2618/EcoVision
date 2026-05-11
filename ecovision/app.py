@@ -892,7 +892,7 @@ def get_data():
                 "zone_performance": _zone_performance(),
                 "collection_frequency": _collection_freq_mock(),
                 "type_data": {},
-                "avg_fill": round(FILL_LEVEL, 1),
+                "avg_fill": round(sum(LOCATION_FILLS.values()) / len(LOCATION_FILLS), 1),
                 "co2_saved_kg": 0,
                 "recycle_rate": 0,
             },
@@ -1175,7 +1175,7 @@ def api_demo():
             label = random.choice(WASTE_LABELS)
             conf = round(random.uniform(72.0, 96.5), 1)
             loc_meta = random.choice(zones)
-            fl = round(max(22.0, min(93.0, FILL_LEVEL + random.uniform(-8, 10))), 1)
+            fl = round(max(22.0, min(93.0, LOCATION_FILLS.get(loc_meta["id"], 30.0) + random.uniform(-8, 10))), 1)
             auth = AUTHORITY_MAP.get(label, "General Waste Authority")
             inserts.append((label, conf, loc_meta["name"], auth, fl))
         conn.executemany(

@@ -112,6 +112,9 @@ function setFile(f) {
     document.getElementById('preview-img').src = e.target.result;
     document.getElementById('preview-wrap').style.display = 'block';
     document.getElementById('preview-name').textContent = f.name;
+    
+    // Auto-trigger classification for a smoother experience
+    classifyWaste();
   };
   r.readAsDataURL(f);
   document.getElementById('classify-btn').disabled = false;

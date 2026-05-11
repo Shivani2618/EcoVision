@@ -48,8 +48,11 @@ WASTE_LABELS = CLASS_NAMES.copy()
 
 try:
     from ultralytics import YOLO
-    MODEL = YOLO("model/waste_classifier.pt")
-    print("✅ YOLOv8 Model Loaded Successfully")
+    import os
+    _DET_DIR = os.path.dirname(os.path.abspath(__file__))
+    _MODEL_PATH = os.path.join(_DET_DIR, "model", "waste_classifier.pt")
+    MODEL = YOLO(_MODEL_PATH)
+    print(f"✅ YOLOv8 Model Loaded Successfully from: {_MODEL_PATH}")
     # Print the model's own class names so we can verify alignment at startup
     if hasattr(MODEL, "names"):
         print(f"   Model classes: {MODEL.names}")

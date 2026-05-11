@@ -128,8 +128,11 @@ LATEST_RESULT: dict = {
     "fill_level": 0.0,
     "timestamp":  "",
 }
+# Tracking fill levels for each of the 6 zones independently
+LOCATION_FILLS: dict[str, float] = {
+    loc["id"]: random.uniform(15.0, 45.0) for loc in LOCATION_DEFS
+}
 SIMULATION_ACTIVE = False
-FILL_LEVEL = random.uniform(20, 55)
 
 
 
@@ -165,10 +168,11 @@ def _auto_overflow_complaint():
         return
     _overflow_last = now
     try:
+        current_fill = LOCATION_FILLS.get("B001", 30.0)
         conn = get_db()
         conn.execute(
             "INSERT INTO complaints(location,issue,priority,authority,status) VALUES(?,?,?,?,?)",
-            ("Main Gate", f"AUTO: Bin overflow detected – fill level {FILL_LEVEL:.0f}%",
+            ("Main Gate", f"AUTO: Bin overflow detected – fill level {current_fill:.0f}%",
              "HIGH", "Emergency Cleaning Team", "Pending")
         )
         conn.commit()
@@ -183,7 +187,8 @@ def _auto_overflow_complaint():
 
 def _typed_level(fid: str, wtype: str) -> float:
     h = (sum(ord(c) for c in fid + wtype) % 47) / 47.0
-    v = FILL_LEVEL * (0.66 + h * 0.44)
+    base_fill = LOCATION_FILLS.get(fid, 30.0)
+    v = base_fill * (0.66 + h * 0.44)
     adj = {"Plastic": 5.0, "Biological": -3.5, "Metal": 8.5, "Glass": 2.0, "Battery": 0.5}.get(wtype, 0.0)
     return max(5.0, min(99.0, v + adj))
 
@@ -759,7 +764,7 @@ def api_stats():
     return jsonify({
         "total_detections": total,
         "pending_complaints": pending,
-        "fill_level": round(FILL_LEVEL, 1),
+        "fill_level": round(LOCATION_FILLS.get("B001", 30.0), 1),
         "by_type": {r["waste_type"]: r["cnt"] for r in type_rows},
         "simulation_active": SIMULATION_ACTIVE,
     })
@@ -926,16 +931,20 @@ def _classify_image_bytes(data: bytes, location_id: str) -> tuple[dict, float]:
         from PIL import Image
         import io
         img_pil = Image.open(io.BytesIO(data)).convert("RGB")
-        img = np.array(img_pil)[:, :, ::-1].copy()  # RGB → BGR for YOLO
+        img = np.array(img_pil)[:, :, ::-1].copy()
         if img is None or img.size == 0:
-            return simulate_detection(), round(float(FILL_LEVEL), 1)
+            return simulate_detection(), round(LOCATION_FILLS.get(location_id, 30.0), 1)
         result = classify_frame(img)
-        # NOTE: Do NOT rename waste_type here — detection.py already returns
-        # the canonical display name (e.g. 'Biological', 'Clothes', etc.)
-        return result, round(float(FILL_LEVEL), 1)
+        
+        # Persist and increment fill level for this specific location
+        current = LOCATION_FILLS.get(location_id, random.uniform(15, 30))
+        new_fill = min(99.5, current + random.uniform(1.8, 5.2))
+        LOCATION_FILLS[location_id] = new_fill
+        
+        return result, round(new_fill, 1)
     except Exception as exc:
         print(f"[app] _classify_image_bytes error: {exc}")
-        return simulate_detection(), round(float(FILL_LEVEL), 1)
+        return simulate_detection(), round(LOCATION_FILLS.get(location_id, 30.0), 1)
 
 
 def _classify_response_dict(result: dict, bin_level: float, location_id: str) -> dict:
@@ -968,7 +977,6 @@ def _classify_response_dict(result: dict, bin_level: float, location_id: str) ->
 @app.route("/api/classify", methods=["POST"])
 @app.route("/upload-image", methods=["POST"])
 def api_classify():
-    global FILL_LEVEL
     try:
         f = request.files.get("image") or request.files.get("file")
         if not f:
@@ -976,6 +984,7 @@ def api_classify():
         raw = f.read()
         location_id = (request.form.get("location_id") or "B001").strip()
         result, bin_level = _classify_image_bytes(raw, location_id)
+        
         conn = get_db()
         try:
             conn.execute(
@@ -988,13 +997,10 @@ def api_classify():
             conn.commit()
         finally:
             conn.close()
-        if bin_level > 80.0:
-            _prev_fill = FILL_LEVEL
-            try:
-                FILL_LEVEL = float(bin_level)
-                _auto_overflow_complaint()
-            finally:
-                FILL_LEVEL = _prev_fill
+
+        if bin_level > 85.0:
+            _auto_overflow_complaint()
+
         out = _classify_response_dict(result, bin_level, location_id)
         _apply_classify_to_globals(result, bin_level)
         return jsonify(out)
@@ -1114,11 +1120,8 @@ def api_analytics():
         return jsonify(_build_analytics())
     except Exception:
         return jsonify({
-            "total": 0,
-            "avg_conf": 0,
-            "co2_saved_kg": 0.0,
             "recycle_rate": 0,
-            "avg_fill": round(FILL_LEVEL, 1),
+            "avg_fill": round(sum(LOCATION_FILLS.values()) / len(LOCATION_FILLS), 1),
             "categories": [],
             "type_counts": {},
             "daily_trend": [],
@@ -1176,9 +1179,9 @@ def api_demo():
 
 @app.route("/api/reset-bins", methods=["POST"])
 def api_reset_bins():
-    global FILL_LEVEL
-    FILL_LEVEL = random.uniform(10.0, 28.0)
-    return jsonify({"message": "Synthetic fill eased for demo visualization (locations recalc from live %)"})
+    for fid in LOCATION_FILLS:
+        LOCATION_FILLS[fid] = random.uniform(5.0, 15.0)
+    return jsonify({"message": "All bins reset to baseline levels (5-15%)"})
 
 
 @app.route("/api/export-csv")

@@ -1,7 +1,7 @@
 # =========================
 # Python
 # =========================
-__pycache__/
+**/__pycache__/
 *.pyc
 *.pyo
 *.pyd
@@ -9,31 +9,47 @@ __pycache__/
 # =========================
 # Virtual Environment
 # =========================
-env/
-venv/
+**/env/
+**/venv/
+.env
 
 # =========================
-# Dataset
+# Dataset (Large Files)
 # =========================
-model/dataset_split/
+ecovision/model/dataset/
+ecovision/model/dataset_split/
+ecovision/.zip
+*.zip
+
+# =========================
+# Databases
+# =========================
+*.db
+ecovision/*.db
 
 # =========================
 # Training Runs / YOLO Outputs
 # =========================
-runs/
+ecovision/runs/
+
+# =========================
+# Model Weights
+# =========================
+*.pt
 
 # =========================
 # Generated Uploads & Processed Files
 # =========================
-static/uploads/
-static/processed/
+ecovision/static/uploads/
+ecovision/static/processed/
 
 # =========================
 # Logs
 # =========================
 *.log
-server.out
-server.err
+ecovision/out.log
+ecovision/server.err.log
+ecovision/server.out.log
 
 # =========================
 # OS / System Files
@@ -47,23 +63,8 @@ Thumbs.db
 .vscode/
 
 # =========================
-# ZIP files
-# =========================
-*.zip
-
-# =========================
-# TensorBoard / Training Events
-# =========================
-events.out.tfevents.*
-
-# =========================
 # Temporary / Cache
 # =========================
 *.tmp
 *.cache
-
-# =========================
-# Optional Large Model Files
-# =========================
-# Uncomment if you DON'T want to upload model weights
-# *.pt
+.pycache/

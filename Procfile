@@ -1,1 +1,1 @@
-web: gunicorn ecovision.app:app
+web: gunicorn --chdir ecovision app:app

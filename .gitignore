@@ -20,19 +20,19 @@ venv/
 # =========================================
 # Dataset / Training Data
 # =========================================
-model/dataset/
-model/dataset_split/
+ecovision/model/dataset/
+ecovision/model/dataset_split/
 *.zip
 
 # =========================================
 # YOLO / Training Outputs
 # =========================================
-runs/
+ecovision/runs/
 
 # =========================================
-# Model Weights
+# Model Weights (Allowing .pt for inference)
 # =========================================
-*.pt
+# *.pt (Commented out to allow inference weights)
 *.pth
 *.onnx
 
@@ -47,19 +47,19 @@ server.out
 # =========================================
 # Databases
 # =========================================
-*.db
-database/
+# *.db (Commented out if you want to push initial db state)
+ecovision/database/
 
 # =========================================
 # Uploaded / Generated Files
 # =========================================
-static/uploads/
-static/processed/
+ecovision/static/uploads/
+ecovision/static/processed/
 
 # =========================================
 # Temporary Files
 # =========================================
-scratch/
+ecovision/scratch/
 *.tmp
 *.cache
 .cache/

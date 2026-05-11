@@ -11,6 +11,13 @@ import os
 import random
 import sqlite3
 import sys
+
+# Add the current directory to sys.path so that 'detection.py' can be imported 
+# correctly when running from the repository root (common in deployment).
+BASE_DIR_PATH = os.path.dirname(os.path.abspath(__file__))
+if BASE_DIR_PATH not in sys.path:
+    sys.path.append(BASE_DIR_PATH)
+
 import tempfile
 import threading
 import time

@@ -931,9 +931,14 @@ def _classify_image_bytes(data: bytes, location_id: str) -> tuple[dict, float]:
         from PIL import Image
         import io
         img_pil = Image.open(io.BytesIO(data)).convert("RGB")
+        
+        # Optimization: Resize large images to save memory on Render (OOM protection)
+        img_pil.thumbnail((640, 640), Image.Resampling.LANCZOS)
+        
         img = np.array(img_pil)[:, :, ::-1].copy()
         if img is None or img.size == 0:
             return simulate_detection(), round(LOCATION_FILLS.get(location_id, 30.0), 1)
+        
         result = classify_frame(img)
         
         # Persist and increment fill level for this specific location

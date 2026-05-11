@@ -1,1 +1,1 @@
-web: gunicorn --chdir ecovision app:app
+web: gunicorn --timeout 120 ecovision.app:app

@@ -113,6 +113,14 @@ def init_db():
         );
     """)
     conn.commit()
+    
+    # Migration: Ensure fill_level column exists in detections table
+    try:
+        cur.execute("ALTER TABLE detections ADD COLUMN fill_level REAL DEFAULT 0")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass # Column already exists
+        
     conn.close()
 
 

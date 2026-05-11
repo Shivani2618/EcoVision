@@ -135,8 +135,19 @@ async function classifyWaste() {
     const wasteTypeHintEl = document.getElementById('waste-type-hint');
     if (wasteTypeHintEl?.value) fd.append('waste_type_hint', wasteTypeHintEl.value);
     const res  = await fetch('/api/classify', { method: 'POST', body: fd });
+    
+    if (!res.ok) {
+      const text = await res.text();
+      if (text.includes('<html')) throw new Error(`Server Error (${res.status}): The server returned an error page. Check Render logs.`);
+      try {
+        const errData = JSON.parse(text);
+        throw new Error(errData.error || 'Classification failed');
+      } catch {
+        throw new Error(`Server Error (${res.status}): ${text.substring(0, 100)}`);
+      }
+    }
+    
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error);
 
     // Handle invalid/blank detection
     if (data.waste_type === 'Uncertain') {

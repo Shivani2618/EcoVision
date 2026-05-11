@@ -138,7 +138,7 @@ LATEST_RESULT: dict = {
 }
 # Tracking fill levels for each of the 6 zones independently
 LOCATION_FILLS: dict[str, float] = {
-    loc["id"]: random.uniform(15.0, 45.0) for loc in LOCATION_DEFS
+    loc["id"]: random.uniform(10.0, 60.0) for loc in LOCATION_DEFS
 }
 SIMULATION_ACTIVE = False
 
@@ -950,8 +950,8 @@ def _classify_image_bytes(data: bytes, location_id: str) -> tuple[dict, float]:
         result = classify_frame(img)
         
         # Persist and increment fill level for this specific location
-        current = LOCATION_FILLS.get(location_id, random.uniform(15, 30))
-        new_fill = min(99.5, current + random.uniform(1.8, 5.2))
+        current = LOCATION_FILLS.get(location_id, random.uniform(10, 50))
+        new_fill = min(99.5, current + random.uniform(5.0, 12.0))
         LOCATION_FILLS[location_id] = new_fill
         
         return result, round(new_fill, 1)

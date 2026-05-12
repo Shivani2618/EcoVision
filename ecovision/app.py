@@ -124,7 +124,13 @@ def init_db():
     conn.close()
 
 
+print(f"🚀 Starting EcoVision 2.0 Backend...")
+print(f"📂 Base Dir: {BASE_DIR}")
+print(f"🗄️ Database Path: {DB_PATH}")
+
 init_db()
+print("✅ Database initialized.")
+
 
 # ---------------------------------------------------------------------------
 # Global state
@@ -576,7 +582,7 @@ def _sensors_all_rows() -> list[dict]:
     return [_sensor_for_location(loc["id"]) for loc in LOCATION_DEFS]
 
 
-def _flat_alerts() -> list[dict]:
+def _flat_alerts(conn=None) -> list[dict]:
     items: list[dict] = []
     for m in _map_locations_raw():
         ml = float(m["max_level"])
@@ -596,7 +602,12 @@ def _flat_alerts() -> list[dict]:
                 "level": round(ml, 1),
                 "extra_alerts": [],
             })
-    conn = get_db()
+    
+    _close_after = False
+    if conn is None:
+        conn = get_db()
+        _close_after = True
+        
     try:
         highs = conn.execute(
             """SELECT location, issue FROM complaints
@@ -612,7 +623,9 @@ def _flat_alerts() -> list[dict]:
                 "extra_alerts": [],
             })
     finally:
-        conn.close()
+        if _close_after:
+            conn.close()
+            
     return sorted(items, key=lambda x: (0 if x["status"] == "critical" else 1, -float(x["level"])))
 
 
@@ -652,14 +665,19 @@ def _dashboard_alerts_for_ui() -> list[dict]:
     return rows[: 8]
 
 
-def _dashboard_bundle() -> dict:
-    a = _build_analytics()
-    crit = sum(1 for x in _flat_alerts() if x["status"] == "critical")
-    tw = round(float(a.get("total") or 0) * 0.88, 1)
+def _dashboard_bundle(conn=None, analytics=None) -> dict:
+    if analytics is None:
+        if conn is None:
+            analytics = _build_analytics()
+        else:
+            analytics = _analytics_core(conn)
+            
+    crit = sum(1 for x in _flat_alerts(conn) if x["status"] == "critical")
+    tw = round(float(analytics.get("total") or 0) * 0.88, 1)
     return {
-        "total": a.get("total", 0),
+        "total": analytics.get("total", 0),
         "critical_count": crit,
-        "avg_conf": a.get("avg_conf", 0),
+        "avg_conf": analytics.get("avg_conf", 0),
         "total_weight": tw,
         "bins": _dash_bins(),
         "alerts": _dashboard_alerts_for_ui(),
@@ -857,15 +875,20 @@ def video_feed_stub():
 
 @app.route("/get-data")
 def get_data():
+    conn = get_db()
     try:
-        a = _build_analytics()
-        d = _dashboard_bundle()
+        a = _analytics_core(conn)
+        d = _dashboard_bundle(conn, a)
+        
+        # Override some fields with calculated values
         d["total"] = a.get("total", d.get("total", 0))
         d["avg_conf"] = a.get("avg_conf", d.get("avg_conf", 0))
         d["total_weight"] = a.get("co2_saved_kg", 0) * 0.35 + a.get("total", 0) * 0.62
         d["total_weight"] = round(float(d["total_weight"]), 1)
+        
         return jsonify({"dashboard": d, "analytics": a})
-    except Exception:
+    except Exception as e:
+        print(f"❌ Error in /get-data: {e}")
         rp = {"stops": [], "eta": 28, "distance_km": 8.0}
         try:
             rp = _route_plan_payload()
@@ -897,6 +920,8 @@ def get_data():
                 "recycle_rate": 0,
             },
         })
+    finally:
+        conn.close()
 
 
 @app.route("/api/routes")

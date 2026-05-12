@@ -51,15 +51,22 @@ try:
     import os
     _DET_DIR = os.path.dirname(os.path.abspath(__file__))
     _MODEL_PATH = os.path.join(_DET_DIR, "model", "waste_classifier.pt")
+    
+    print(f"🧠 Attempting to load YOLOv8 model from: {_MODEL_PATH}")
+    if not os.path.exists(_MODEL_PATH):
+        print(f"❌ Model file NOT found at: {_MODEL_PATH}")
+    
     MODEL = YOLO(_MODEL_PATH)
-    print(f"✅ YOLOv8 Model Loaded Successfully from: {_MODEL_PATH}")
+    print(f"✅ YOLOv8 Model Loaded Successfully.")
+    
     # Print the model's own class names so we can verify alignment at startup
     if hasattr(MODEL, "names"):
-        print(f"   Model classes: {MODEL.names}")
+        print(f"📊 Model classes detected: {MODEL.names}")
 except ImportError:
-    print("⚠️ ultralytics not installed — run: pip install ultralytics")
+    print("⚠️ ultralytics not installed — running in fallback mode (CV heuristics only).")
 except Exception as e:
-    print(f"⚠️ Model not found or failed to load ({e}) — using fallback mode")
+    print(f"❌ Model loading failed: {e}")
+    print("⚠️ Falling back to CV heuristics and simulation.")
 
 AUTHORITY_MAP = {
     "Biological": "Compost Department",

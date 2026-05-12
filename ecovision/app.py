@@ -25,7 +25,7 @@ from datetime import datetime, timedelta
 
 import numpy as np
 from flask import (Flask, Response, jsonify, render_template,
-                   request, send_from_directory)
+                   request, send_from_directory, redirect, url_for)
 
 from detection import (
     AUTHORITY_MAP,
@@ -34,6 +34,9 @@ from detection import (
     classify_frame,
     simulate_detection,
 )
+
+from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from flask_bcrypt import Bcrypt
 
 # ---------------------------------------------------------------------------
 # Paths & App setup
@@ -46,6 +49,26 @@ os.makedirs(STATIC_DIR, exist_ok=True)
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16 MB max image upload
+app.config["SECRET_KEY"] = "ecovision_secret_key_12345"
+
+bcrypt = Bcrypt(app)
+login_manager = LoginManager(app)
+login_manager.login_view = "login"
+
+class User(UserMixin):
+    def __init__(self, id, username, email):
+        self.id = id
+        self.username = username
+        self.email = email
+
+@login_manager.user_loader
+def load_user(user_id):
+    conn = get_db()
+    user_data = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    conn.close()
+    if user_data:
+        return User(user_data["id"], user_data["username"], user_data["email"])
+    return None
 
 WASTE_ICONS = {
     "Biological": "🌿",
@@ -110,6 +133,14 @@ def init_db():
             authority TEXT NOT NULL,
             status    TEXT DEFAULT 'Pending',
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS users (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            username      TEXT UNIQUE NOT NULL,
+            email         TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
         );
     """)
     conn.commit()
@@ -706,8 +737,69 @@ def inject_layout_vars():
 
 @app.route("/")
 def index():
-    from flask import redirect
-    return redirect("/dashboard")
+    if current_user.is_authenticated:
+        return redirect("/dashboard")
+    return redirect("/login")
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        email = request.form.get("email")
+        password = request.form.get("password")
+        
+        print(f"DEBUG: Login attempt for email: {email}")
+        conn = get_db()
+        user_data = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+        conn.close()
+        
+        if user_data:
+            pw_match = bcrypt.check_password_hash(user_data["password_hash"], password)
+            print(f"DEBUG: User found, password match: {pw_match}")
+            if pw_match:
+                user = User(user_data["id"], user_data["username"], user_data["email"])
+                login_user(user)
+                return redirect("/dashboard")
+        else:
+            print(f"DEBUG: No user found with email: {email}")
+            
+        return render_template("login.html", error="Invalid username or password")
+            
+    return render_template("login.html")
+
+
+@app.route("/signup", methods=["GET", "POST"])
+def signup():
+    if request.method == "POST":
+        username = request.form.get("username")
+        email = request.form.get("email")
+        password = request.form.get("password")
+        print(f"DEBUG: Signup attempt - Username: {username}, Email: {email}")
+        hashed_pw = bcrypt.generate_password_hash(password).decode("utf-8")
+        
+        try:
+            conn = get_db()
+            conn.execute("INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)",
+                         (username, email, hashed_pw))
+            conn.commit()
+            conn.close()
+            print("DEBUG: Signup successful")
+            return redirect("/login")
+        except sqlite3.IntegrityError as e:
+            print(f"DEBUG: Signup IntegrityError: {e}")
+            return render_template("signup.html", error="Username or email already exists")
+        except Exception as e:
+            print(f"DEBUG: Signup Unexpected error: {e}")
+            return render_template("signup.html", error=f"An error occurred: {e}")
+            
+    return render_template("signup.html")
+
+
+@app.route("/logout")
+@login_required
+def logout():
+    logout_user()
+    return redirect("/login")
 
 
 
@@ -799,21 +891,25 @@ def api_stats():
 # --- HTML pages (base layout) ------------------------------------------------
 
 @app.route("/dashboard")
+@login_required
 def page_dashboard():
     return render_template("dashboard.html")
 
 
 @app.route("/upload")
+@login_required
 def page_upload():
     return render_template("upload.html")
 
 
 @app.route("/smart-map")
+@login_required
 def page_smart_map():
     return render_template("smart_map.html")
 
 
 @app.route("/analytics")
+@login_required
 def page_analytics():
     return render_template("analytics.html")
 
@@ -874,6 +970,7 @@ def video_feed_stub():
 # --- Aggregated dashboard payload -------------------------------------------
 
 @app.route("/get-data")
+@login_required
 def get_data():
     conn = get_db()
     try:

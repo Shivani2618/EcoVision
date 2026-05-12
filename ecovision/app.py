@@ -9,9 +9,10 @@ import csv
 import io
 import os
 import random
-import sqlite3
 import sys
 import gc
+from pymongo import MongoClient
+from bson.objectid import ObjectId
 
 # Add the current directory to sys.path so that 'detection.py' can be imported 
 # correctly when running from the repository root (common in deployment).
@@ -44,7 +45,7 @@ from flask_bcrypt import Bcrypt
 # ---------------------------------------------------------------------------
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
-DB_PATH    = os.path.join(BASE_DIR, "ecovision2.db")
+MONGO_URI  = "mongodb+srv://mehrashiv8889_db_user:cOxRTLNwpSZ09Q1E@cluster0.9ppx8vh.mongodb.net/?appName=Cluster0"
 
 os.makedirs(STATIC_DIR, exist_ok=True)
 
@@ -64,11 +65,11 @@ class User(UserMixin):
 
 @login_manager.user_loader
 def load_user(user_id):
-    conn = get_db()
-    user_data = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
-    conn.close()
+    db = get_db()
+    user_data = db.users.find_one({"_id": ObjectId(user_id) if ObjectId.is_valid(user_id) else user_id})
     if user_data:
-        return User(user_data["id"], user_data["username"], user_data["email"])
+        # Convert ObjectId to string for User object
+        return User(str(user_data["_id"]), user_data["username"], user_data["email"])
     return None
 
 WASTE_ICONS = {
@@ -107,58 +108,24 @@ ID_TO_META = {r["id"]: r for r in LOCATION_DEFS}
 # ---------------------------------------------------------------------------
 
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    client = MongoClient(MONGO_URI)
+    return client.ecovision_db
 
 
 def init_db():
-    conn = get_db()
-    cur = conn.cursor()
-    cur.executescript("""
-        CREATE TABLE IF NOT EXISTS detections (
-            id        INTEGER PRIMARY KEY AUTOINCREMENT,
-            waste_type TEXT NOT NULL,
-            confidence REAL NOT NULL,
-            location   TEXT DEFAULT 'Main Gate',
-            authority  TEXT NOT NULL,
-            fill_level REAL DEFAULT 0,
-            timestamp  DATETIME DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS complaints (
-            id        INTEGER PRIMARY KEY AUTOINCREMENT,
-            location  TEXT NOT NULL,
-            issue     TEXT NOT NULL,
-            priority  TEXT DEFAULT 'NORMAL',
-            authority TEXT NOT NULL,
-            status    TEXT DEFAULT 'Pending',
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS users (
-            id            INTEGER PRIMARY KEY AUTOINCREMENT,
-            username      TEXT UNIQUE NOT NULL,
-            email         TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
-            created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
-        );
-    """)
-    conn.commit()
-    
-    # Migration: Ensure fill_level column exists in detections table
+    db = get_db()
+    # MongoDB creates collections automatically on first insert.
+    # We can just check connection here.
     try:
-        cur.execute("ALTER TABLE detections ADD COLUMN fill_level REAL DEFAULT 0")
-        conn.commit()
-    except sqlite3.OperationalError:
-        pass # Column already exists
-        
-    conn.close()
+        db.command("ping")
+        print("✅ MongoDB Atlas connection successful.")
+    except Exception as e:
+        print(f"❌ MongoDB Atlas connection failed: {e}")
 
 
 print(f"🚀 Starting EcoVision 2.0 Backend...")
 print(f"📂 Base Dir: {BASE_DIR}")
-print(f"🗄️ Database Path: {DB_PATH}")
+print(f"🗄️ Database: MongoDB Atlas (Cloud)")
 
 init_db()
 print("✅ Database initialized.")
@@ -192,14 +159,15 @@ SIMULATION_ACTIVE = False
 
 def _save_detection(result: dict, fill: float):
     try:
-        conn = get_db()
-        conn.execute(
-            "INSERT INTO detections(waste_type,confidence,location,authority,fill_level) VALUES(?,?,?,?,?)",
-            (result["waste_type"], result["confidence"],
-             "Main Gate", result["authority"], fill)
-        )
-        conn.commit()
-        conn.close()
+        db = get_db()
+        db.detections.insert_one({
+            "waste_type": result["waste_type"],
+            "confidence": float(result["confidence"]),
+            "location": "Main Gate",
+            "authority": result["authority"],
+            "fill_level": float(fill),
+            "timestamp": datetime.now()
+        })
     except Exception:
         pass
 
@@ -215,14 +183,15 @@ def _auto_overflow_complaint():
     _overflow_last = now
     try:
         current_fill = LOCATION_FILLS.get("B001", 30.0)
-        conn = get_db()
-        conn.execute(
-            "INSERT INTO complaints(location,issue,priority,authority,status) VALUES(?,?,?,?,?)",
-            ("Main Gate", f"AUTO: Bin overflow detected – fill level {current_fill:.0f}%",
-             "HIGH", "Emergency Cleaning Team", "Pending")
-        )
-        conn.commit()
-        conn.close()
+        db = get_db()
+        db.complaints.insert_one({
+            "location": "Main Gate",
+            "issue": f"AUTO: Bin overflow detected – fill level {current_fill:.0f}%",
+            "priority": "HIGH",
+            "authority": "Emergency Cleaning Team",
+            "status": "Pending",
+            "timestamp": datetime.now()
+        })
     except Exception:
         pass
 
@@ -344,11 +313,12 @@ def _bin_level_meta(level: float) -> tuple[str, str, bool]:
 
 
 
-def _db_type_counts(conn: sqlite3.Connection) -> dict[str, int]:
-    rows = conn.execute(
-        "SELECT waste_type, COUNT(*) AS n FROM detections GROUP BY waste_type"
-    ).fetchall()
-    return {r["waste_type"]: r["n"] for r in rows}
+def _db_type_counts(db) -> dict[str, int]:
+    pipeline = [
+        {"$group": {"_id": "$waste_type", "count": {"$sum": 1}}}
+    ]
+    results = db.detections.aggregate(pipeline)
+    return {r["_id"]: r["count"] for r in results}
 
 
 def _zone_performance() -> list[dict]:
@@ -372,17 +342,18 @@ def _collection_freq_mock() -> list[dict]:
     ]
 
 
-def _analytics_core(conn: sqlite3.Connection) -> dict:
-    total_row = conn.execute("SELECT COUNT(*) AS c FROM detections").fetchone()
-    total = int(total_row["c"]) if total_row else 0
-    avg_conf_row = conn.execute(
-        "SELECT AVG(confidence) AS a FROM detections"
-    ).fetchone()
-    avg_conf = round(float(avg_conf_row["a"] or 0.0), 1)
+def _analytics_core(db) -> dict:
+    total = db.detections.count_documents({})
+    
+    avg_conf_res = list(db.detections.aggregate([
+        {"$group": {"_id": None, "avg": {"$avg": "$confidence"}}}
+    ]))
+    avg_conf = round(float(avg_conf_res[0]["avg"] if avg_conf_res and avg_conf_res[0]["avg"] else 0.0), 1)
+    
     lr_live = round(float(LATEST_RESULT.get("confidence") or 0.0), 1)
     avg_conf = round(max(avg_conf, lr_live), 1)
 
-    type_counts_all = _db_type_counts(conn)
+    type_counts_all = _db_type_counts(db)
     avg_fill_live = round(
         sum(m["max_level"] for m in _map_locations_raw()) / max(1, len(LOCATION_DEFS)), 1
     )
@@ -436,22 +407,29 @@ def _analytics_core(conn: sqlite3.Connection) -> dict:
         }
 
     cats = sorted(type_counts_all.keys(), key=lambda c: (-type_counts_all[c], c))
-    td = conn.execute("""
-        SELECT DATE(timestamp) AS d, COUNT(*) AS n FROM detections
-        GROUP BY DATE(timestamp) ORDER BY d ASC LIMIT 30
-    """).fetchall()
+    
+    # Daily trend using aggregation
+    td_pipeline = [
+        {"$project": {"date": {"$dateToString": {"format": "%Y-%m-%d", "date": "$timestamp"}}}},
+        {"$group": {"_id": "$date", "count": {"$sum": 1}}},
+        {"$sort": {"_id": 1}},
+        {"$limit": 30}
+    ]
+    td_results = db.detections.aggregate(td_pipeline)
+    dtrend = [{"day": r["_id"], "count": r["count"]} for r in td_results]
 
-    dtrend = [{"day": r["d"], "count": r["n"]} for r in td]
     if not dtrend:
         today = datetime.now().strftime("%Y-%m-%d")
         dtrend = [{"day": today, "count": total}]
 
-    week_rows = conn.execute("""
-        SELECT waste_type AS w, COUNT(*) AS n FROM detections
-        WHERE DATE(timestamp, 'localtime') >= DATE('now', 'localtime', '-7 day')
-        GROUP BY waste_type
-    """).fetchall()
-    weekly_counts = {r["w"]: r["n"] for r in week_rows}
+    # Weekly counts
+    seven_days_ago = datetime.now() - timedelta(days=7)
+    week_pipeline = [
+        {"$match": {"timestamp": {"$gte": seven_days_ago}}},
+        {"$group": {"_id": "$waste_type", "count": {"$sum": 1}}}
+    ]
+    week_results = db.detections.aggregate(week_pipeline)
+    weekly_counts = {r["_id"]: r["count"] for r in week_results}
 
     type_data_payload: dict[str, dict] = {}
     co2_factors = {"Plastic": 1.42, "Metal": 1.92, "Biological": 0.94, "Battery": 2.54, "Cardboard": 1.1, "Paper": 1.0, "Glass": 1.5, "Clothes": 1.2, "Shoes": 1.2, "Trash": 0.5}
@@ -482,11 +460,8 @@ def _analytics_core(conn: sqlite3.Connection) -> dict:
 
 
 def _build_analytics() -> dict:
-    conn = get_db()
-    try:
-        return _analytics_core(conn)
-    finally:
-        conn.close()
+    db = get_db()
+    return _analytics_core(db)
 
 
 def _predict_payload(a: dict) -> dict:
@@ -635,28 +610,22 @@ def _flat_alerts(conn=None) -> list[dict]:
                 "extra_alerts": [],
             })
     
-    _close_after = False
-    if conn is None:
-        conn = get_db()
-        _close_after = True
-        
+    db = get_db()
     try:
-        highs = conn.execute(
-            """SELECT location, issue FROM complaints
-               WHERE priority='HIGH' AND status='Pending'
-               ORDER BY id DESC LIMIT 8"""
-        ).fetchall()
+        highs = db.complaints.find(
+            {"priority": "HIGH", "status": "Pending"}
+        ).sort("timestamp", -1).limit(8)
+        
         for r in highs:
             items.append({
                 "status": "warning",
-                "message": f"Complaint ({r['location']}): {r['issue'][:120]}",
+                "message": f"Complaint ({r['location']}): {r.get('issue', '')[:120]}",
                 "icon": "📋",
                 "level": 75.0,
                 "extra_alerts": [],
             })
-    finally:
-        if _close_after:
-            conn.close()
+    except Exception:
+        pass
             
     return sorted(items, key=lambda x: (0 if x["status"] == "critical" else 1, -float(x["level"])))
 
@@ -697,14 +666,13 @@ def _dashboard_alerts_for_ui() -> list[dict]:
     return rows[: 8]
 
 
-def _dashboard_bundle(conn=None, analytics=None) -> dict:
+def _dashboard_bundle(db=None, analytics=None) -> dict:
+    if db is None:
+        db = get_db()
     if analytics is None:
-        if conn is None:
-            analytics = _build_analytics()
-        else:
-            analytics = _analytics_core(conn)
+        analytics = _analytics_core(db)
             
-    crit = sum(1 for x in _flat_alerts(conn) if x["status"] == "critical")
+    crit = sum(1 for x in _flat_alerts() if x["status"] == "critical")
     tw = round(float(analytics.get("total") or 0) * 0.88, 1)
     return {
         "total": analytics.get("total", 0),
@@ -750,15 +718,14 @@ def login():
         password = request.form.get("password")
         
         print(f"DEBUG: Login attempt for email: {email}")
-        conn = get_db()
-        user_data = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
-        conn.close()
+        db = get_db()
+        user_data = db.users.find_one({"email": email})
         
         if user_data:
             pw_match = bcrypt.check_password_hash(user_data["password_hash"], password)
             print(f"DEBUG: User found, password match: {pw_match}")
             if pw_match:
-                user = User(user_data["id"], user_data["username"], user_data["email"])
+                user = User(str(user_data["_id"]), user_data["username"], user_data["email"])
                 login_user(user)
                 return redirect("/dashboard")
         else:
@@ -779,16 +746,28 @@ def signup():
         hashed_pw = bcrypt.generate_password_hash(password).decode("utf-8")
         
         try:
-            conn = get_db()
-            conn.execute("INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)",
-                         (username, email, hashed_pw))
-            conn.commit()
-            conn.close()
-            print("DEBUG: Signup successful")
+            db = get_db()
+            
+            # Check for existing username
+            existing_user = db.users.find_one({"username": username})
+            if existing_user:
+                print(f"DEBUG: Signup failed - Username '{username}' already exists")
+                return render_template("signup.html", error="This username is already taken. Please choose another.")
+            
+            # Check for existing email
+            existing_email = db.users.find_one({"email": email})
+            if existing_email:
+                print(f"DEBUG: Signup failed - Email '{email}' already exists")
+                return render_template("signup.html", error="This email is already registered. Please login instead.")
+            
+            db.users.insert_one({
+                "username": username,
+                "email": email,
+                "password_hash": hashed_pw,
+                "created_at": datetime.now()
+            })
+            print(f"DEBUG: Signup successful for {username}")
             return redirect("/login")
-        except sqlite3.IntegrityError as e:
-            print(f"DEBUG: Signup IntegrityError: {e}")
-            return render_template("signup.html", error="Username or email already exists")
         except Exception as e:
             print(f"DEBUG: Signup Unexpected error: {e}")
             return render_template("signup.html", error=f"An error occurred: {e}")
@@ -819,22 +798,24 @@ def api_start_simulation():
 
 @app.route("/api/detections")
 def api_detections():
-    conn = get_db()
-    rows = conn.execute(
-        "SELECT * FROM detections ORDER BY id DESC LIMIT 30"
-    ).fetchall()
-    conn.close()
-    return jsonify([dict(r) for r in rows])
+    db = get_db()
+    rows = list(db.detections.find().sort("timestamp", -1).limit(30))
+    for r in rows:
+        r["id"] = str(r.pop("_id"))
+        if isinstance(r.get("timestamp"), datetime):
+            r["timestamp"] = r["timestamp"].strftime("%Y-%m-%d %H:%M:%S")
+    return jsonify(rows)
 
 
 @app.route("/api/complaints", methods=["GET"])
 def api_complaints_get():
-    conn = get_db()
-    rows = conn.execute(
-        "SELECT * FROM complaints ORDER BY id DESC LIMIT 50"
-    ).fetchall()
-    conn.close()
-    return jsonify([dict(r) for r in rows])
+    db = get_db()
+    rows = list(db.complaints.find().sort("timestamp", -1).limit(50))
+    for r in rows:
+        r["id"] = str(r.pop("_id"))
+        if isinstance(r.get("timestamp"), datetime):
+            r["timestamp"] = r["timestamp"].strftime("%Y-%m-%d %H:%M:%S")
+    return jsonify(rows)
 
 
 @app.route("/api/complaints", methods=["POST"])
@@ -848,38 +829,36 @@ def api_complaints_post():
     priority  = "HIGH" if "overflow" in issue.lower() else "NORMAL"
     authority = "Emergency Cleaning Team" if priority == "HIGH" else "General Waste Authority"
 
-    conn = get_db()
-    conn.execute(
-        "INSERT INTO complaints(location,issue,priority,authority,status) VALUES(?,?,?,?,?)",
-        (location, issue, priority, authority, "Pending")
-    )
-    conn.commit()
-    conn.close()
+    db = get_db()
+    db.complaints.insert_one({
+        "location": location,
+        "issue": issue,
+        "priority": priority,
+        "authority": authority,
+        "status": "Pending",
+        "timestamp": datetime.now()
+    })
     return jsonify({"success": True, "priority": priority, "authority": authority}), 201
 
 
-@app.route("/api/complaints/<int:cid>/status", methods=["PATCH"])
-def api_complaint_status(cid: int):
+@app.route("/api/complaints/<cid>/status", methods=["PATCH"])
+def api_complaint_status(cid):
     data   = request.get_json(force=True)
     status = data.get("status", "Pending")
-    conn   = get_db()
-    conn.execute("UPDATE complaints SET status=? WHERE id=?", (status, cid))
-    conn.commit()
-    conn.close()
+    db     = get_db()
+    db.complaints.update_one(
+        {"_id": ObjectId(cid) if ObjectId.is_valid(cid) else cid},
+        {"$set": {"status": status}}
+    )
     return jsonify({"success": True})
 
 
 @app.route("/api/stats")
 def api_stats():
-    conn = get_db()
-    type_rows = conn.execute(
-        "SELECT waste_type, COUNT(*) AS cnt FROM detections GROUP BY waste_type"
-    ).fetchall()
-    total = conn.execute("SELECT COUNT(*) AS c FROM detections").fetchone()["c"]
-    pending = conn.execute(
-        "SELECT COUNT(*) AS c FROM complaints WHERE status='Pending'"
-    ).fetchone()["c"]
-    conn.close()
+    db = get_db()
+    type_counts = _db_type_counts(db)
+    total = db.detections.count_documents({})
+    pending = db.complaints.count_documents({"status": "Pending"})
     return jsonify({
         "total_detections": total,
         "pending_complaints": pending,
@@ -973,10 +952,10 @@ def video_feed_stub():
 @app.route("/get-data")
 @login_required
 def get_data():
-    conn = get_db()
+    db = get_db()
     try:
-        a = _analytics_core(conn)
-        d = _dashboard_bundle(conn, a)
+        a = _analytics_core(db)
+        d = _dashboard_bundle(db, a)
         
         # Override some fields with calculated values
         d["total"] = a.get("total", d.get("total", 0))
@@ -1018,8 +997,6 @@ def get_data():
                 "recycle_rate": 0,
             },
         })
-    finally:
-        conn.close()
 
 
 @app.route("/api/routes")
@@ -1125,18 +1102,15 @@ def api_classify():
         location_id = (request.form.get("location_id") or "B001").strip()
         result, bin_level = _classify_image_bytes(raw, location_id)
         
-        conn = get_db()
-        try:
-            conn.execute(
-                "INSERT INTO detections(waste_type,confidence,location,authority,fill_level) "
-                "VALUES(?,?,?,?,?)",
-                (result["waste_type"], float(result["confidence"]),
-                 ID_TO_META.get(location_id, {}).get("name", "Unknown"),
-                 result.get("authority", "General"), bin_level),
-            )
-            conn.commit()
-        finally:
-            conn.close()
+        db = get_db()
+        db.detections.insert_one({
+            "waste_type": result["waste_type"],
+            "confidence": float(result["confidence"]),
+            "location": ID_TO_META.get(location_id, {}).get("name", "Unknown"),
+            "authority": result.get("authority", "General"),
+            "fill_level": float(bin_level),
+            "timestamp": datetime.now()
+        })
 
         if bin_level > 85.0:
             _auto_overflow_complaint()
@@ -1212,21 +1186,15 @@ def api_dashboard():
         a = _build_analytics()
         d = _dashboard_bundle()
 
-        conn = get_db()
-        recent_rows = conn.execute("""
-            SELECT waste_type, confidence, timestamp
-            FROM detections
-            ORDER BY id DESC
-            LIMIT 10
-        """).fetchall()
-        conn.close()
+        db = get_db()
+        recent_rows = list(db.detections.find().sort("timestamp", -1).limit(10))
 
         recent = []
         for r in recent_rows:
             recent.append({
                 "waste_type": r["waste_type"],
                 "confidence": round(float(r["confidence"]), 1),
-                "timestamp": r["timestamp"],
+                "timestamp": r["timestamp"].strftime("%Y-%m-%d %H:%M:%S") if isinstance(r.get("timestamp"), datetime) else str(r.get("timestamp")),
                 "icon": WASTE_ICONS.get(r["waste_type"], "♻️"),
                 "bin_id": "B001"
             })
@@ -1296,7 +1264,7 @@ def api_demo():
     """Adds sample rows so charts are never empty during judging."""
     try:
         inserts = []
-        conn = get_db()
+        db = get_db()
         zones = LOCATION_DEFS
         for _ in range(12):
             label = random.choice(WASTE_LABELS)
@@ -1304,14 +1272,15 @@ def api_demo():
             loc_meta = random.choice(zones)
             fl = round(max(22.0, min(93.0, LOCATION_FILLS.get(loc_meta["id"], 30.0) + random.uniform(-8, 10))), 1)
             auth = AUTHORITY_MAP.get(label, "General Waste Authority")
-            inserts.append((label, conf, loc_meta["name"], auth, fl))
-        conn.executemany(
-            "INSERT INTO detections(waste_type,confidence,location,authority,fill_level) "
-            "VALUES(?,?,?,?,?)",
-            inserts,
-        )
-        conn.commit()
-        conn.close()
+            inserts.append({
+                "waste_type": label,
+                "confidence": conf,
+                "location": loc_meta["name"],
+                "authority": auth,
+                "fill_level": fl,
+                "timestamp": datetime.now()
+            })
+        db.detections.insert_many(inserts)
         return jsonify({"success": True, "message": "Inserted 12 demo detections"})
     except Exception as exc:
         return jsonify({"success": False, "message": str(exc)}), 500
@@ -1326,28 +1295,33 @@ def api_reset_bins():
 
 @app.route("/api/export-csv")
 def api_export_csv():
-    conn = get_db()
+    db = get_db()
     try:
-        dets = conn.execute(
-            "SELECT * FROM detections ORDER BY id DESC LIMIT 800"
-        ).fetchall()
-        comps = conn.execute(
-            "SELECT * FROM complaints ORDER BY id DESC LIMIT 400"
-        ).fetchall()
-    finally:
-        conn.close()
+        dets = list(db.detections.find().sort("timestamp", -1).limit(800))
+        comps = list(db.complaints.find().sort("timestamp", -1).limit(400))
+    except Exception as e:
+        print(f"Export Error: {e}")
+        dets, comps = [], []
 
     buf = io.StringIO()
     w = csv.writer(buf)
     w.writerow(["detections_export"])
     w.writerow(["id", "waste_type", "confidence", "location", "authority", "fill_level", "timestamp"])
     for r in dets:
-        w.writerow([r[k] for k in r.keys()])
+        w.writerow([
+            str(r.get("_id")), r.get("waste_type"), r.get("confidence"),
+            r.get("location"), r.get("authority"), r.get("fill_level"),
+            r.get("timestamp").strftime("%Y-%m-%d %H:%M:%S") if isinstance(r.get("timestamp"), datetime) else r.get("timestamp")
+        ])
     w.writerow([])
     w.writerow(["complaints_export"])
     w.writerow(["id", "location", "issue", "priority", "authority", "status", "timestamp"])
     for r in comps:
-        w.writerow([r[k] for k in r.keys()])
+        w.writerow([
+            str(r.get("_id")), r.get("location"), r.get("issue"),
+            r.get("priority"), r.get("authority"), r.get("status"),
+            r.get("timestamp").strftime("%Y-%m-%d %H:%M:%S") if isinstance(r.get("timestamp"), datetime) else r.get("timestamp")
+        ])
 
     return Response(
         buf.getvalue(),

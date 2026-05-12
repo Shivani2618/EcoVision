@@ -11,6 +11,8 @@ from typing import Optional, Tuple
 
 import cv2
 import numpy as np
+import torch
+import gc
 
 # ---------------- MODEL LOADING ----------------
 MODEL = None
@@ -128,7 +130,9 @@ def _model_classify(frame: np.ndarray) -> Optional[Tuple[str, float]]:
     try:
         # ultralytics expects RGB; results[0].probs gives classification probs
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        results = MODEL.predict(source=rgb, verbose=False, imgsz=224)
+        
+        with torch.no_grad():
+            results = MODEL.predict(source=rgb, verbose=False, imgsz=224, device='cpu')
 
         probs = results[0].probs
         if probs is None:
@@ -154,6 +158,11 @@ def _model_classify(frame: np.ndarray) -> Optional[Tuple[str, float]]:
     except Exception as e:
         print(f"[detection] Model inference error: {e}")
         return None
+    finally:
+        # Force garbage collection to free memory on limited environments like Render
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
 
 # ---------------- HEURISTIC FALLBACK ----------------

@@ -11,6 +11,7 @@ import os
 import random
 import sqlite3
 import sys
+import gc
 
 # Add the current directory to sys.path so that 'detection.py' can be imported 
 # correctly when running from the repository root (common in deployment).
@@ -1066,6 +1067,10 @@ def _classify_image_bytes(data: bytes, location_id: str) -> tuple[dict, float]:
         img_pil.thumbnail((640, 640), Image.Resampling.LANCZOS)
         
         img = np.array(img_pil)[:, :, ::-1].copy()
+        # Free up PIL object memory immediately
+        del img_pil
+        gc.collect()
+
         if img is None or img.size == 0:
             return simulate_detection(), round(LOCATION_FILLS.get(location_id, 30.0), 1)
         

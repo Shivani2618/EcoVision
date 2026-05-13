@@ -1,0 +1,14 @@
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.git
+.gitignore
+.vscode
+env
+venv
+.DS_Store
+ecovision2.db
+ecovision2_backup.db
+*.zip
+*.log

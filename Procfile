@@ -1,1 +1,1 @@
-web: gunicorn -b 0.0.0.0:$PORT --timeout 120 ecovision.app:app
+web: gunicorn -b 0.0.0.0:$PORT --timeout 120 --workers 1 --threads 2 ecovision.app:app

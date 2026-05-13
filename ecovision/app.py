@@ -107,9 +107,13 @@ ID_TO_META = {r["id"]: r for r in LOCATION_DEFS}
 # Database
 # ---------------------------------------------------------------------------
 
+_mongo_client = None
+
 def get_db():
-    client = MongoClient(MONGO_URI)
-    return client.ecovision_db
+    global _mongo_client
+    if _mongo_client is None:
+        _mongo_client = MongoClient(MONGO_URI)
+    return _mongo_client.ecovision_db
 
 
 def init_db():

@@ -32,7 +32,7 @@ ecovision/runs/
 # =========================================
 # Model Weights (Allowing .pt for inference)
 # =========================================
-# *.pt (Commented out to allow inference weights)
+# *.pt 
 *.pth
 *.onnx
 
@@ -75,3 +75,5 @@ Thumbs.db
 # VS Code
 # =========================================
 .vscode/
+
+ecovision/model/dataset/
